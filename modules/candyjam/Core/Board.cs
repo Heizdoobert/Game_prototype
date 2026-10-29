@@ -23,33 +23,43 @@ namespace CandyJam.Core
     {
         public readonly List<Candy> Candies = new List<Candy>();
         public int Remaining { get; private set; }
+        // ids of the candies on a higher layer that overlap each candy; the layout never moves, so clones share it
+        int[][] cover;
 
         Board() { }
 
         public Board Clone()
         {
-            var b = new Board { Remaining = Remaining };
+            var b = new Board { Remaining = Remaining, cover = cover };
             foreach (var c in Candies) b.Candies.Add(c.Clone());
             return b;
         }
 
+        // ponytail: O(n^2) once per board (<=300 candies); the solver's many clones reuse it
         public Board(CandySpec[] specs)
         {
             for (int i = 0; i < specs.Length; i++) Candies.Add(new Candy(i, specs[i]));
             Remaining = specs.Length;
+            float lim = Rules.CoverDist * Rules.CoverDist;
+            cover = new int[specs.Length][];
+            var over = new List<int>();
+            for (int i = 0; i < specs.Length; i++)
+            {
+                over.Clear();
+                for (int j = 0; j < specs.Length; j++)
+                {
+                    if (specs[j].Layer <= specs[i].Layer) continue;
+                    float dx = specs[j].X - specs[i].X, dy = specs[j].Y - specs[i].Y;
+                    if (dx * dx + dy * dy < lim) over.Add(j);
+                }
+                cover[i] = over.ToArray();
+            }
         }
 
-        // ponytail: O(n^2) over a full level (<=300 candies); add a grid if profiling says so
         public bool IsFree(Candy c)
         {
             if (c.Removed) return false;
-            float lim = Rules.CoverDist * Rules.CoverDist;
-            foreach (var o in Candies)
-            {
-                if (o.Removed || o.Layer <= c.Layer) continue;
-                float dx = o.X - c.X, dy = o.Y - c.Y;
-                if (dx * dx + dy * dy < lim) return false;
-            }
+            foreach (int o in cover[c.Id]) if (!Candies[o].Removed) return false;
             return true;
         }
 
