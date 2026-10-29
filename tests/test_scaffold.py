@@ -56,6 +56,15 @@ class ScaffoldTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             scaffold(os.path.join(self.tmp(), 'p'), paths.TEMPLATE, m)
 
+    def test_bad_module_id_or_name_refused(self):
+        # id becomes the Android applicationId suffix: lowercase letters/digits only; name must be non-empty
+        for bad in ({'id': 'Demo Game', 'name': 'x'}, {'id': '1demo', 'name': 'x'}, {'id': 'demo', 'name': ' '}, {'name': 'x'}):
+            m = self.tmp()
+            mk_module(m)
+            write(os.path.join(m, 'module.json'), json.dumps(bad))
+            with self.assertRaises(SystemExit, msg=str(bad)):
+                scaffold(os.path.join(self.tmp(), 'p'), paths.TEMPLATE, m)
+
 
 if __name__ == '__main__':
     unittest.main()

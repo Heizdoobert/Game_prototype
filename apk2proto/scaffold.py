@@ -1,4 +1,4 @@
-import json, os, shutil
+import json, os, re, shutil
 
 
 def scaffold(proto, template, module):
@@ -7,6 +7,8 @@ def scaffold(proto, template, module):
         raise SystemExit('module needs module.json and View/GameModule.cs: ' + module)
     with open(os.path.join(module, 'module.json')) as fh:
         meta = json.load(fh)
+    if not re.fullmatch(r'[a-z][a-z0-9]{1,30}', str(meta.get('id', ''))) or not str(meta.get('name', '')).strip():
+        raise SystemExit('module.json needs id (lowercase letters/digits, e.g. candyjam) and a non-empty name')
     shutil.copytree(template, proto, dirs_exist_ok=True, ignore=shutil.ignore_patterns('bin', 'obj'))
     for src, dst in (('Core', 'Assets/Scripts/Game/Core'), ('View', 'Assets/Scripts/Game/View'), ('Tests', 'Tests~/Core.Tests/Game')):
         d = os.path.join(proto, dst)

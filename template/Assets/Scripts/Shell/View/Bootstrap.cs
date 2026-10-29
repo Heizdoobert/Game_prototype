@@ -7,7 +7,7 @@ namespace Proto.Shell
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void Init()
         {
-            if (Object.FindFirstObjectByType<App>() != null) return;
+            if (Object.FindAnyObjectByType<App>() != null) return;
             new GameObject("App").AddComponent<App>();
         }
     }
