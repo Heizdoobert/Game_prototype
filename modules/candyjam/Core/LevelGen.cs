@@ -12,12 +12,12 @@ namespace CandyJam.Core
             return Difficulty.Normal;
         }
 
+        public static int TargetColors(int n) { return Math.Min(Rules.MaxColors, 3 + n / 6); }
+
         // ponytail: bot-verified rejection sampling; colour count drops every 10 failed attempts (floor 3).
-        // The greedy Solver cannot solve >= 5 colours at real board sizes, so the ramp stops at 5; the fallback
-        // decrement stays as a safety net. Lever for more colours = a stronger Solver.
         public static LevelData Generate(int number)
         {
-            int colors = Math.Min(5, 3 + number / 15);
+            int colors = TargetColors(number);
             for (int attempt = 0; attempt < 200; attempt++)
             {
                 if (attempt > 0 && attempt % 10 == 0 && colors > 3) colors--;
@@ -80,16 +80,33 @@ namespace CandyJam.Core
             for (int i = 0; i < Rules.Palette; i++) ids.Add(i);
             Layout.Shuffle(ids, rng);
             var colorOf = new List<int>();
-            for (int g = 0; g < count / 3; g++)
-            {
-                int c = ids[g % colors];
-                colorOf.Add(c); colorOf.Add(c); colorOf.Add(c);
-            }
+            var groups = Groups(colors, count / 3, rng);
+            for (int i = 0; i < colors; i++)
+                for (int k = 0; k < groups[i] * 3; k++) colorOf.Add(ids[i]);
             Layout.Shuffle(colorOf, rng);
 
             var specs = new CandySpec[count];
             for (int i = 0; i < count; i++) specs[i] = new CandySpec(pts[i].X, pts[i].Y, pts[i].Layer, colorOf[i]);
             return new LevelData { Number = number, Diff = diff, Candies = specs, Rows = RowsFor(diff) };
+        }
+
+        // colorRate: each colour is common (weight 10) or rare (5), at least one of each; groups of 3 candies are
+        // shared out in proportion to weight, every colour gets one
+        static int[] Groups(int colors, int total, Random rng)
+        {
+            var w = new int[colors];
+            for (int i = 0; i < colors; i++) w[i] = rng.Next(2) == 0 ? 10 : 5;
+            if (colors >= 2 && Array.IndexOf(w, 5) < 0) w[rng.Next(colors)] = 5;
+            if (colors >= 2 && Array.IndexOf(w, 10) < 0) w[rng.Next(colors)] = 10;
+            var g = new int[colors];
+            for (int i = 0; i < colors; i++) g[i] = 1;
+            for (int n = colors; n < total; n++)
+            {
+                int best = 0; // most under-served by weight: w/g largest
+                for (int i = 1; i < colors; i++) if (w[i] * g[best] > w[best] * g[i]) best = i;
+                g[best]++;
+            }
+            return g;
         }
 
         static ProgressRow[] RowsFor(Difficulty d)

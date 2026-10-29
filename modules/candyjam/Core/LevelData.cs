@@ -13,5 +13,16 @@ namespace CandyJam.Core
         public Difficulty Diff;
         public CandySpec[] Candies;
         public ProgressRow[] Rows;
+
+        public int Colors
+        {
+            get
+            {
+                var seen = new bool[Rules.Palette];
+                int n = 0;
+                foreach (var c in Candies) if (!seen[c.Color]) { seen[c.Color] = true; n++; }
+                return n;
+            }
+        }
     }
 }
