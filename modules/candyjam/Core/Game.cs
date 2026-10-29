@@ -22,18 +22,48 @@ namespace CandyJam.Core
         public int JarsCompleted { get; private set; }
 
         readonly int totalCandies;
-        readonly Random rng;
+        uint rngState;
 
         public Game(LevelData level, int seed = 1)
         {
             Level = level;
             Board = new Board(level.Candies);
-            rng = new Random(seed);
+            rngState = (uint)seed;
             totalCandies = level.Candies.Length;
             for (int i = 0; i < Rules.TrayMax; i++) Tray[i] = -1;
             for (int i = 0; i < Rules.JarsUnlocked; i++) JarUnlocked[i] = true;
             Settle();
         }
+
+        // LCG so a Game can be cloned with its random future intact
+        int Next(int n)
+        {
+            rngState = rngState * 1664525u + 1013904223u;
+            return (int)((rngState >> 8) % (uint)n);
+        }
+
+        public bool TrayInDanger { get { return State == GameState.Playing && TrayCount == TraySlots - 1; } }
+
+        Game(Game o)
+        {
+            Level = o.Level;
+            Board = o.Board.Clone();
+            for (int i = 0; i < Rules.JarSlots; i++)
+            {
+                if (o.Jars[i] != null) Jars[i] = new JarState { Color = o.Jars[i].Color, Count = o.Jars[i].Count };
+                JarUnlocked[i] = o.JarUnlocked[i];
+            }
+            System.Array.Copy(o.Tray, Tray, Rules.TrayMax);
+            TraySlots = o.TraySlots;
+            TrayCount = o.TrayCount;
+            State = o.State;
+            JarsCompleted = o.JarsCompleted;
+            totalCandies = o.totalCandies;
+            rngState = o.rngState;
+        }
+
+        // Level is shared: immutable by convention
+        public Game Clone() { return new Game(this); }
 
         public int FindJar(int color)
         {
@@ -46,6 +76,13 @@ namespace CandyJam.Core
         {
             dest = -1;
             if (State != GameState.Playing || !Board.IsFree(c)) return TapResult.Rejected;
+            return TakeCandy(c, out dest);
+        }
+
+        // routes a candy to its jar, else the tray; Rejected when neither has room
+        TapResult TakeCandy(Candy c, out int dest)
+        {
+            dest = -1;
             int j = FindJar(c.Color);
             int t = j >= 0 ? -1 : FirstEmptyTray();
             if (j < 0 && t < 0) return TapResult.Rejected;
@@ -163,8 +200,8 @@ namespace CandyJam.Core
                 w[i] = i < row.RankWeights.Length ? row.RankWeights[i] : 1;
                 total += w[i];
             }
-            if (total <= 0) return cand[rng.Next(cand.Count)];
-            int roll = rng.Next(total);
+            if (total <= 0) return cand[Next(cand.Count)];
+            int roll = Next(total);
             for (int i = 0; i < w.Length; i++)
             {
                 if (roll < w[i]) return cand[i];

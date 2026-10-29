@@ -4,6 +4,16 @@ namespace CandyJam.Core
 {
     public sealed partial class Game
     {
+        // takes any candy, covered or not, with the same routing as a tap
+        public BoosterResult UseNeedle(Candy target, out TapResult result, out int dest)
+        {
+            result = TapResult.Rejected;
+            dest = -1;
+            if (State != GameState.Playing || target == null || target.Removed) return BoosterResult.Unusable;
+            result = TakeCandy(target, out dest);
+            return result == TapResult.Rejected ? BoosterResult.Unusable : BoosterResult.Success;
+        }
+
         public BoosterResult UseAddHole()
         {
             if (State != GameState.Playing) return BoosterResult.Unusable;

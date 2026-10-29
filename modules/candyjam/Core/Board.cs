@@ -16,12 +16,22 @@ namespace CandyJam.Core
         public readonly int Layer, Color;
         public bool Removed;
         public Candy(int id, CandySpec s) { Id = id; X = s.X; Y = s.Y; Layer = s.Layer; Color = s.Color; }
+        public Candy Clone() { return new Candy(Id, new CandySpec(X, Y, Layer, Color)) { Removed = Removed }; }
     }
 
     public sealed class Board
     {
         public readonly List<Candy> Candies = new List<Candy>();
         public int Remaining { get; private set; }
+
+        Board() { }
+
+        public Board Clone()
+        {
+            var b = new Board { Remaining = Remaining };
+            foreach (var c in Candies) b.Candies.Add(c.Clone());
+            return b;
+        }
 
         public Board(CandySpec[] specs)
         {
