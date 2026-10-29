@@ -66,8 +66,9 @@ namespace Proto.Shell
             topRight.text = "Coins " + profile.Coins + "   Hearts " + profile.Hearts + timer;
             for (int i = 0; i < boosterText.Length; i++)
             {
+                var def = mod.Boosters[i];
                 int inv = profile.Boosters[i];
-                boosterText[i].text = mod.Boosters[i].Name + "\n" + (inv > 0 ? "x" + inv : mod.Boosters[i].Price + "c");
+                boosterText[i].text = def.Name + "\n" + (profile.Level < def.UnlockLevel ? "Lv " + def.UnlockLevel : inv > 0 ? "x" + inv : def.Price + "c");
             }
             string h = play != null ? play.Hint : null;
             hint.text = h ?? "";
@@ -98,7 +99,7 @@ namespace Proto.Shell
             {
                 int id = i;
                 float x0 = i / (float)n + 0.01f, x1 = (i + 1) / (float)n - 0.01f;
-                var b = Ui.Button(boosterBar, "", new Vector2(x0, 0.1f), new Vector2(x1, 0.9f), () => { if (play != null) play.UseBooster(id); }, Pink);
+                var b = Ui.Button(boosterBar, "", new Vector2(x0, 0.1f), new Vector2(x1, 0.9f), () => { if (play != null && profile.Level >= mod.Boosters[id].UnlockLevel) play.UseBooster(id); }, Pink);
                 boosterText[i] = b.GetComponentInChildren<Text>();
                 boosterText[i].fontSize = 30;
             }
@@ -181,15 +182,24 @@ namespace Proto.Shell
             {
                 int gain = level.WinCoins;
                 profile.Win(gain);
+                var granted = profile.GrantUnlocks(mod.Boosters.Select(b => b.UnlockLevel).ToArray(), mod.Boosters.Select(b => b.FreeOnUnlock).ToArray());
                 SaveStore.Save(profile);
                 Modal("Level clear!", "+" + gain + " coins", ("Next level", new UnityAction(StartLevel)), ("Home", new UnityAction(ShowHome)));
+                if (granted.Count > 0) Toast("New booster: " + mod.Boosters[granted[0]].Name + " (+" + mod.Boosters[granted[0]].FreeOnUnlock + ")");
             }
-            else
-            {
-                string revive = "Revive (" + Profile.Cfg.ReviveCost + " coins)";
-                Modal("You lost", "Revive keeps your progress.\nRetry costs a heart.",
-                    (revive, new UnityAction(TryRevive)), ("Retry", new UnityAction(Retry)), ("Home", new UnityAction(GiveUp)));
-            }
+            else ShowLose();
+        }
+
+        void ShowLose()
+        {
+            string revive = "Revive (" + Profile.Cfg.ReviveCost + " coins)";
+            Modal("You lost", "Revive keeps your progress.\nRetry costs a heart.",
+                (revive, new UnityAction(TryRevive)), ("Retry", new UnityAction(() => ConfirmLose(Retry))), ("Home", new UnityAction(() => ConfirmLose(GiveUp))));
+        }
+
+        void ConfirmLose(UnityAction proceed)
+        {
+            Modal("Are you sure?", "You will lose all of your progress!", ("Back", new UnityAction(ShowLose)), ("Lose progress", proceed));
         }
 
         void TryRevive()

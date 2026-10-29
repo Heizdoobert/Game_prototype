@@ -5,7 +5,15 @@ namespace Proto.Shell
 {
     public enum PlayStatus { Playing, Won, Lost }
 
-    public sealed class BoosterDef { public string Name; public int Price; }
+    public sealed class BoosterDef
+    {
+        public string Name;
+        public int Price;
+        /// <summary>Profile level from which the booster can be used; 1 = always available.</summary>
+        public int UnlockLevel = 1;
+        /// <summary>Free uses granted when the profile reaches UnlockLevel after a win.</summary>
+        public int FreeOnUnlock;
+    }
 
     /// <summary>
     /// Prepare() does the heavy per-level work once; Data carries the module's own level object to Begin().
