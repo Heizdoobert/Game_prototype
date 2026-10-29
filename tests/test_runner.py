@@ -156,21 +156,37 @@ class DetectDumpTests(unittest.TestCase):
     def test_exists_false_without_apk_dir_or_engine(self):
         self.assertFalse(self.detect.exists(self.wd)); self.engine('Unity\n', apk=False); self.assertFalse(self.detect.exists(self.wd))
 
-    def run_dump(self, rc):
-        done = subprocess.CompletedProcess([], rc)
-        with mock.patch.object(runner.subprocess, 'run', return_value=done) as run, mock.patch.object(runner, '_need'), \
+    def run_dump(self, rc, creates=False):
+        def fake(cmd, **kw):                              # the kit writes il2cpp/dump.cs (or not)
+            if creates:
+                os.makedirs(self.wd.p('il2cpp'), exist_ok=True)
+                with open(self.wd.p('il2cpp', 'dump.cs'), 'w') as fh: fh.write('x')
+            return subprocess.CompletedProcess(cmd, rc)
+        with mock.patch.object(runner.subprocess, 'run', side_effect=fake) as run, mock.patch.object(runner, '_need'), \
              contextlib.redirect_stdout(io.StringIO()):
             runner.st_dump(self.wd, args(self.d))
         self.assertFalse(run.call_args.kwargs['check'])
+
+    def test_stale_dump_cs_removed_before_kit_runs(self):
+        os.makedirs(self.wd.p('il2cpp'))
+        with open(self.wd.p('il2cpp', 'dump.cs'), 'w') as fh: fh.write('old')
+        seen = []
+        def fake(cmd, **kw): seen.append(os.path.exists(self.wd.p('il2cpp', 'dump.cs'))); return subprocess.CompletedProcess(cmd, 1)
+        with mock.patch.object(runner.subprocess, 'run', side_effect=fake), mock.patch.object(runner, '_need'), \
+             contextlib.redirect_stdout(io.StringIO()), self.assertRaises(SystemExit): runner.st_dump(self.wd, args(self.d))
+        self.assertEqual(seen, [False])
 
     def test_dump_without_dump_cs_fails(self):
         with self.assertRaises(SystemExit) as cm: self.run_dump(1)
         self.assertEqual(str(cm.exception), 'dump produced no il2cpp/dump.cs (kit exit 1)')
 
     def test_dump_with_dump_cs_ok_even_if_kit_exits_1(self):
+        self.run_dump(1, creates=True); self.run_dump(0, creates=True)
+
+    def test_old_dump_cs_does_not_pass_a_failed_kit_run(self):
         os.makedirs(self.wd.p('il2cpp'))
-        with open(self.wd.p('il2cpp', 'dump.cs'), 'w') as fh: fh.write('x')
-        self.run_dump(1); self.run_dump(0)
+        with open(self.wd.p('il2cpp', 'dump.cs'), 'w') as fh: fh.write('old')
+        with self.assertRaises(SystemExit): self.run_dump(1)
 
 class KitCheckTests(unittest.TestCase):
     def test_detect_and_dump_refuse_without_kit(self):
@@ -198,6 +214,13 @@ class KeyTests(unittest.TestCase):
 
     def test_none_without_proto_or_apk(self):
         for n in ('test', 'verify', 'build'): self.assertIsNone(self.st[n].key(self.wd, self.a))
+
+    def test_author_key_tracks_rules_md(self):
+        author = self.st['author']; k0 = author.key(self.wd, self.a)
+        self.put('rules.md', '[C] rule'); k1 = author.key(self.wd, self.a)
+        self.assertNotEqual(k0, k1)
+        self.put('rules.md', '[C] rule, longer'); self.assertNotEqual(k1, author.key(self.wd, self.a))
+        os.remove(self.wd.p('rules.md')); self.assertEqual(k0, author.key(self.wd, self.a))
 
     def test_verify_never_skips(self):
         for rel in ('proto/Assets/Scripts/A.cs', 'proto/build.json', 'spec.json'): self.put(rel)

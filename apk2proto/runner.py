@@ -52,6 +52,8 @@ def st_detect(wd, a):
 
 def st_dump(wd, a):
     _need(DUMP_CHECKS, 'dump')
+    dump_cs = wd.p('il2cpp', 'dump.cs')
+    if os.path.isfile(dump_cs): os.remove(dump_cs)          # this stage is re-running: a failed kit run must not pass on an old file
     cmd = [_kit('run_all.sh'), a.apk, wd.path, 'meta dump assets']
     print('+', ' '.join(cmd), flush=True)
     # the kit's run_all.sh can exit 1 after a good dump (trailing doctor|grep under pipefail): judge by the output only
@@ -137,7 +139,7 @@ STAGES = [
     Stage('dump', st_dump, lambda wd, a: fingerprint(a.apk), lambda wd: os.path.isfile(wd.p('il2cpp', 'dump.cs'))),
     Stage('distill', st_distill, lambda wd, a: fingerprint(wd.p('il2cpp', 'dump.cs'), wd.p('il2cpp', 'stringliteral.json'), wd.p('assets_dump'),
                                                           wd.p('hints.json'), wd.p('engine.txt'), wd.p('manifest_badging.txt')), None),
-    Stage('author', st_author, lambda wd, a: fingerprint(_module(wd, a)), None),
+    Stage('author', st_author, lambda wd, a: fingerprint(_module(wd, a)) + fingerprint(wd.p('rules.md')), None),
     Stage('scaffold', st_scaffold, lambda wd, a: fingerprint(_module(wd, a), paths.TEMPLATE), None),
     Stage('test', st_test, _k_test, None),
     Stage('verify', st_verify, _k_verify, None),

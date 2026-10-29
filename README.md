@@ -55,6 +55,8 @@ python3 -W error::ResourceWarning -m unittest discover -s tests
 
 ## Measured (estimates)
 
+`WORKDIR/rules.md` must exist before the `author` stage passes (together with `module/View/GameModule.cs`). For the golden run: `ln -s /mnt/second_drive/Knit2D/KB/02_gameplay_rules.md /mnt/second_drive/Knit2D/gold/rules.md`.
+
 Golden run on Knit Away 3.3.12 (`app.apk`), 2026-10-29, existing dumps reused (`detect`/`dump` skipped), `--module modules/candyjam`, no device attached. The runner prints no timings: these are rough wall-clock estimates from that session, not benchmarks.
 
 | stage | approx. wall-clock |
