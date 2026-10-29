@@ -17,7 +17,8 @@ namespace Proto.EditorTools
         static BuildCfg Cfg()
         {
             var c = new BuildCfg();
-            if (File.Exists("build.json")) JsonUtility.FromJsonOverwrite(File.ReadAllText("build.json"), c);
+            try { if (File.Exists("build.json")) JsonUtility.FromJsonOverwrite(File.ReadAllText("build.json"), c); }
+            catch (System.Exception e) { Debug.LogWarning("build.json ignored, using defaults: " + e.Message); c = new BuildCfg(); }
             return c;
         }
 
@@ -42,8 +43,9 @@ namespace Proto.EditorTools
             EditorSceneManager.SaveScene(scene, ScenePath);
 
             PlayerSettings.companyName = "Proto";
-            PlayerSettings.productName = Cfg().product;
-            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, Cfg().appId);
+            var cfg = Cfg();
+            PlayerSettings.productName = cfg.product;
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, cfg.appId);
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;

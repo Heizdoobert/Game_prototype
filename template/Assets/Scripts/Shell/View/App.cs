@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -24,8 +25,7 @@ namespace Proto.Shell
 
         void Start()
         {
-            var type = typeof(App).Assembly.GetTypes().First(t => !t.IsAbstract && typeof(IGameModule).IsAssignableFrom(t));
-            mod = (IGameModule)Activator.CreateInstance(type);
+            mod = FindModule();
             Profile.Cfg = mod.Config;
             profile = SaveStore.Load(mod.Boosters.Length);
             cam = Camera.main;
@@ -44,9 +44,20 @@ namespace Proto.Shell
             ShowHome();
         }
 
+        // the single non-abstract IGameModule in this assembly; reflection only, so a module needs no registration
+        static IGameModule FindModule()
+        {
+            Type[] all;
+            try { all = typeof(App).Assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException e) { all = e.Types.Where(t => t != null).ToArray(); }
+            var found = all.Where(t => !t.IsAbstract && typeof(IGameModule).IsAssignableFrom(t)).ToArray();
+            if (found.Length != 1) throw new InvalidOperationException("expected exactly one IGameModule, found " + found.Length);
+            return (IGameModule)Activator.CreateInstance(found[0], true);
+        }
+
         void Update()
         {
-            if (profile == null || topLeft == null) return; // Start not finished
+            if (mod == null || profile == null || topLeft == null || boosterText == null) return; // Start not finished
             var now = DateTime.UtcNow;
             profile.TickHearts(now);
             topLeft.text = "Level " + profile.Level;
@@ -161,6 +172,7 @@ namespace Proto.Shell
             play = mod.Begin(level, profile, cam);
             play.Ended += OnEnded;
             play.Message += Toast;
+            if (play.Status != PlayStatus.Playing) OnEnded(play.Status); // Ended raised synchronously inside Begin would be lost
         }
 
         void OnEnded(PlayStatus s)
@@ -184,7 +196,7 @@ namespace Proto.Shell
         {
             if (profile.Coins < Profile.Cfg.ReviveCost) { Toast("Not enough coins"); return; }
             if (play == null || !play.Revive()) { Toast("Can't revive"); return; }
-            profile.PayRevive();
+            if (!profile.PayRevive()) { Toast("Not enough coins"); return; }
             ClearModal();
             SaveStore.Save(profile);
         }
