@@ -25,9 +25,17 @@ def sh(cmd, **kw):
 def _module(wd, a): return a.module or wd.p('module')
 def _kit(*p): return os.path.join(paths.KIT, 'bin', *p)
 
+def _engine(path):
+    """(first line, IL2CPP backend?) of the kit's engine.txt; ('', False) when unreadable."""
+    try:
+        with open(path) as fh: text = fh.read()
+    except OSError: return '', False
+    return text.split('\n')[0].strip(), 'IL2CPP' in text
+
 def _check_engine(engine_txt):
-    with open(engine_txt) as fh: first = fh.read().split('\n')[0].strip()
+    first, il2cpp = _engine(engine_txt)
     if first != 'Unity': raise SystemExit('engine %r is not supported yet (other engines are separate specs)' % first)
+    if not il2cpp: raise SystemExit('Unity Mono backend is not supported yet (no IL2CPP dump); other backends are separate specs')
 
 def _need(names, what):
     bad = [(n, fix) for ok, n, fix in DR.checks() if not ok and n in names]
@@ -94,10 +102,8 @@ def st_install(wd, a):
     sh(['adb', 'shell', 'monkey', '-p', app_id, '-c', 'android.intent.category.LAUNCHER', '1'])
 
 def _engine_is_unity(wd):
-    try:
-        with open(wd.p('engine.txt')) as fh: first = fh.read().split('\n')[0].strip()
-    except OSError: return False
-    return first == 'Unity' and os.path.isdir(wd.p('apk'))
+    first, il2cpp = _engine(wd.p('engine.txt'))
+    return first == 'Unity' and il2cpp and os.path.isdir(wd.p('apk'))
 
 def _cat(*digests): return ''.join(digests)
 

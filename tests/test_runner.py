@@ -120,7 +120,10 @@ class DetectDumpTests(unittest.TestCase):
         self.engine('Cocos\n'); self.assertFalse(self.detect.exists(self.wd))
 
     def test_exists_true_for_unity(self):
-        self.engine('Unity\n2022'); self.assertTrue(self.detect.exists(self.wd))
+        self.engine('Unity\n2022\nIL2CPP -> use bin/il2cpp_dump.sh'); self.assertTrue(self.detect.exists(self.wd))
+
+    def test_exists_false_for_unity_mono(self):
+        self.engine('Unity\n2022\nMono'); self.assertFalse(self.detect.exists(self.wd))
 
     def test_exists_false_without_apk_dir_or_engine(self):
         self.assertFalse(self.detect.exists(self.wd)); self.engine('Unity\n', apk=False); self.assertFalse(self.detect.exists(self.wd))
@@ -200,7 +203,12 @@ class EngineTests(unittest.TestCase):
         with open(p, 'w') as fh: fh.write(text)
         return runner._check_engine(p)
 
-    def test_unity_ok(self): self.check('Unity\n2022.3\n')
+    def test_unity_il2cpp_ok(self): self.check('Unity\nIL2CPP -> use bin/il2cpp_dump.sh\n')
+    def test_unity_mono_rejected(self):
+        with self.assertRaises(SystemExit) as cm: self.check('Unity\n2022.3\nMono\n')
+        self.assertEqual(str(cm.exception), 'Unity Mono backend is not supported yet (no IL2CPP dump); other backends are separate specs')
+    def test_missing_engine_file_rejected(self):
+        with self.assertRaises(SystemExit): runner._check_engine('/nonexistent/engine.txt')
     def test_other_engine_rejected(self):
         with self.assertRaises(SystemExit) as cm: self.check('Cocos\n')
         self.assertIn("'Cocos'", str(cm.exception)); self.assertIn('not supported', str(cm.exception))
