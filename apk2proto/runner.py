@@ -1,4 +1,4 @@
-import argparse, json, os, subprocess, sys
+import argparse, json, os, subprocess
 from collections import namedtuple
 from . import distill as D, doctor as DR, paths, scaffold as S, verify as V
 from .state import Workdir, fingerprint
@@ -15,7 +15,10 @@ MIN_MEM_MB = 3500
 PAUSE_MSG = '''\
 author: write the game module, then re-run the same command.
   read : {wd}/spec.json and {wd}/spec_index.md  (skill: apk2proto)
-  write: {module}/module.json, Core/*.cs, View/GameModule.cs, Tests/*Tests.cs   (see modules/candyjam for the shape)
+  contract: {contract}
+  example : {example}  (a finished module)
+  write: {module}/module.json, Core/*.cs, View/GameModule.cs, Tests/*Tests.cs
+         {wd}/rules.md  (tagged [C]/[A]/[S]/[?], verify scans it for secret values)
 '''
 
 def sh(cmd, **kw):
@@ -58,8 +61,12 @@ def st_distill(wd, a): D.distill(wd.path)
 
 def st_author(wd, a):
     m = _module(wd, a)
-    if not os.path.isfile(os.path.join(m, 'View', 'GameModule.cs')):
-        print(PAUSE_MSG.format(wd=wd.path, module=m)); raise Paused()
+    # rules.md lives next to spec.json (skill and verify use WORKDIR/rules.md), not inside the module
+    if not (os.path.isfile(os.path.join(m, 'View', 'GameModule.cs')) and os.path.isfile(wd.p('rules.md'))):
+        print(PAUSE_MSG.format(wd=wd.path, module=m,
+                               contract=os.path.join(paths.ROOT, 'template', 'Assets', 'Scripts', 'Shell', 'View', 'IGameModule.cs'),
+                               example=os.path.join(paths.ROOT, 'modules', 'candyjam')))
+        raise Paused()
 
 def st_scaffold(wd, a): S.scaffold(wd.p('proto'), paths.TEMPLATE, _module(wd, a))
 def st_test(wd, a): sh(['dotnet', 'run', '--project', wd.p('proto', 'Tests~', 'Core.Tests')])
@@ -172,5 +179,6 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == 'doctor': return DR.main()
     a.apk = os.path.abspath(a.apk)
+    if a.module: a.module = os.path.abspath(a.module)
     if not os.path.isfile(a.apk): raise SystemExit('apk not found: ' + a.apk)
     return run(a)

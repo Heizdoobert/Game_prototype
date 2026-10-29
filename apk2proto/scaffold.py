@@ -2,11 +2,14 @@ import json, os, re, shutil
 
 
 def scaffold(proto, template, module):
-    """Copy template into proto, swap in the module's game dirs. Unity state (Library, .meta) is kept."""
+    """Copy template into proto and replace its Game dirs (Core, View, Tests) and their .meta files with the module's. Shell and Unity state (Library, Shell .meta) are kept."""
     if not os.path.isfile(os.path.join(module, 'module.json')) or not os.path.isfile(os.path.join(module, 'View', 'GameModule.cs')):
         raise SystemExit('module needs module.json and View/GameModule.cs: ' + module)
-    with open(os.path.join(module, 'module.json')) as fh:
-        meta = json.load(fh)
+    mj = os.path.join(module, 'module.json')
+    try:
+        with open(mj) as fh: meta = json.load(fh)
+    except ValueError: meta = None
+    if not isinstance(meta, dict): raise SystemExit('module.json is not valid JSON object: ' + mj)
     if not re.fullmatch(r'[a-z][a-z0-9]{1,30}', str(meta.get('id', ''))) or not str(meta.get('name', '')).strip():
         raise SystemExit('module.json needs id (lowercase letters/digits, e.g. candyjam) and a non-empty name')
     shutil.copytree(template, proto, dirs_exist_ok=True, ignore=shutil.ignore_patterns('bin', 'obj'))

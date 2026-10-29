@@ -5,7 +5,11 @@ class Workdir:
         self.path = os.path.abspath(path); os.makedirs(self.path, exist_ok=True)
         self.file = os.path.join(self.path, 'state.json')
         if os.path.exists(self.file):
-            with open(self.file) as fh: self.state = json.load(fh)
+            try:
+                with open(self.file) as fh: self.state = json.load(fh)
+            except ValueError: self.state = None
+            if not isinstance(self.state, dict):
+                print('warning: %s is corrupt, starting with empty state' % self.file); self.state = {}
         else: self.state = {}
 
     def p(self, *parts): return os.path.join(self.path, *parts)

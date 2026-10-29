@@ -43,6 +43,13 @@ class ScaffoldTests(unittest.TestCase):
         with open(os.path.join(p, 'Tests~', 'Core.Tests', 'Program.cs')) as fh: self.assertIn('#if HAS_GAME', fh.read())
         self.assertTrue(os.path.isdir(os.path.join(p, 'Tests~', 'Core.Tests', 'Game')))
 
+    def test_invalid_module_json_exits_cleanly(self):
+        m, p = self.tmp(), os.path.join(self.tmp(), 'proto')
+        for bad in ('{nope', '[1]', '"x"', ''):
+            mk_module(m); write(os.path.join(m, 'module.json'), bad)
+            with self.assertRaises(SystemExit) as cm: scaffold(p, paths.TEMPLATE, m)
+            self.assertEqual(str(cm.exception), 'module.json is not valid JSON object: ' + os.path.join(m, 'module.json'))
+
     def test_rescaffold_replaces_game_files_keeps_unity_state(self):
         m, p = self.tmp(), os.path.join(self.tmp(), 'proto')
         mk_module(m)

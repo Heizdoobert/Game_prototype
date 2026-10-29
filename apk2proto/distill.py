@@ -1,6 +1,7 @@
 import functools, glob, json, os, re
 from . import paths
 from .schema import validate
+from .textutil import clip
 
 HDR = re.compile(r'^(?:public |internal |private |protected )?(?:static |abstract |sealed )*'
                  r'(class|struct|enum|interface) (.+?)(?: : [^/]*?)? // TypeDefIndex: (\d+)')
@@ -60,12 +61,6 @@ def _load_json(path):
 def _big(path, notes):
     if os.path.getsize(path) <= MAX_JSON: return False
     _note(notes, 'skipped JSON files larger than 20 MB'); return True
-
-def _clip(node, n=2000):
-    # bound every string/key so the kit's quadratic regex only ever sees short input
-    if isinstance(node, dict): return {(k[:n] if isinstance(k, str) else k): _clip(v, n) for k, v in node.items()}
-    if isinstance(node, list): return [_clip(v, n) for v in node]
-    return node[:n] if isinstance(node, str) else node
 
 def _note(notes, msg):
     if msg not in notes: notes.append(msg)
@@ -153,7 +148,7 @@ def _scan_assets(dump, notes):
             if isinstance(sd, dict) and sd.get('SerializedBytes'):
                 odin.append({'asset': rel, 'strings': _odin_strings(sd['SerializedBytes'])}); continue
             if not CONFIGY.search(os.path.basename(f)): continue
-            d = _clip(d)
+            d = clip(d, 2000)            # bound every string/key so the kit's quadratic regex only ever sees short input
             if len(re.findall(r'[:\[,]-?\d+\.?\d*', json.dumps(d, separators=(',', ':')))) > 5:
                 # secret-named values are masked whole by redact_obj BEFORE the 8000 cut, so a cut never leaves half a secret
                 config.append({'asset': rel, 'json': json.dumps(paths.redact().redact_obj(_mask(d)), separators=(',', ':'))[:8000]})

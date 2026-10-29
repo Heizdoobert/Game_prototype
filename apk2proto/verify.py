@@ -1,5 +1,6 @@
 import hashlib, json, os, re
 from . import paths
+from .textutil import clip
 
 SKIP = {'Library', 'Temp', 'obj', 'bin', 'Builds', 'Logs', '.git', 'UserSettings'}
 MIN = 64                    # smaller files (stubs, tiny metas) legitimately coincide
@@ -17,11 +18,6 @@ def _files(root, skip=()):
     for dp, dns, fs in os.walk(root):
         dns[:] = [d for d in dns if d not in skip]
         for f in fs: yield os.path.join(dp, f)
-
-def _clip(node, n=LINE):
-    if isinstance(node, dict): return {(k[:n] if isinstance(k, str) else k): _clip(v, n) for k, v in node.items()}
-    if isinstance(node, list): return [_clip(v, n) for v in node]
-    return node[:n] if isinstance(node, str) else node
 
 def _has_big_key(node):
     if isinstance(node, dict): return any((isinstance(k, str) and len(k) > LINE) or _has_big_key(v) for k, v in node.items())
@@ -102,7 +98,7 @@ def verify(project, apk_dir, spec_path=None, assets_dump=None, extra_text_files=
             with open(spec_path, encoding='utf-8') as fh: spec = json.load(fh)
             if _has_big_key(spec): problems.append('spec.json has an oversized key')
             else:
-                spec = _clip(spec)
+                spec = clip(spec, LINE)
                 if paths.redact().redact_obj(spec) != spec: problems.append('possible secret in spec.json')
         except (OSError, ValueError, RecursionError): problems.append('spec.json unreadable')
         values = _secret_values(spec_path, assets_dump) if assets_dump else []

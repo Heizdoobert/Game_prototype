@@ -99,12 +99,36 @@ class RunnerTests(unittest.TestCase):
                          ['detect', 'dump', 'distill', 'author', 'scaffold', 'test', 'verify', 'build', 'install'])
 
 class AuthorTests(unittest.TestCase):
-    def test_pause_message_mentions_spec_path(self):
-        wd = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, wd, ignore_errors=True)
+    def setUp(self):
+        self.d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, self.d, ignore_errors=True)
+        self.wd = runner.Workdir(self.d)
+
+    def put(self, *rel):
+        p = os.path.join(self.d, *rel); os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, 'w') as fh: fh.write('x')
+
+    def pause_text(self):
         with mock.patch('builtins.print') as pr, self.assertRaises(runner.Paused):
-            runner.st_author(runner.Workdir(wd), args(wd))
-        out = ' '.join(str(c.args[0]) for c in pr.call_args_list)
-        self.assertIn(os.path.join(wd, 'spec.json'), out); self.assertIn('spec_index.md', out)
+            runner.st_author(self.wd, args(self.d))
+        return ' '.join(str(c.args[0]) for c in pr.call_args_list)
+
+    def test_pause_message_lists_everything_the_author_needs(self):
+        out = self.pause_text()
+        for want in (os.path.join(self.d, 'spec.json'), 'spec_index.md', os.path.join(self.d, 'rules.md'),
+                     os.path.join(runner.paths.ROOT, 'template', 'Assets', 'Scripts', 'Shell', 'View', 'IGameModule.cs'),
+                     os.path.join(runner.paths.ROOT, 'modules', 'candyjam')):
+            self.assertIn(want, out)
+        self.assertTrue(os.path.isfile(os.path.join(runner.paths.ROOT, 'template', 'Assets', 'Scripts', 'Shell', 'View', 'IGameModule.cs')))
+        self.assertTrue(os.path.isdir(os.path.join(runner.paths.ROOT, 'modules', 'candyjam')))
+
+    def test_module_without_rules_md_still_pauses(self):
+        self.put('module', 'View', 'GameModule.cs'); self.pause_text()
+
+    def test_rules_md_without_module_still_pauses(self):
+        self.put('rules.md'); self.pause_text()
+
+    def test_complete_authoring_continues(self):
+        self.put('module', 'View', 'GameModule.cs'); self.put('rules.md'); runner.st_author(self.wd, args(self.d))
 
 class DetectDumpTests(unittest.TestCase):
     def setUp(self):
@@ -296,6 +320,15 @@ class BuildRunTests(unittest.TestCase):
         self.assertEqual(out.getvalue(), '')
 
 class MainTests(unittest.TestCase):
+    def test_module_made_absolute(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        apk = os.path.join(d, 'g.apk')
+        with open(apk, 'w') as fh: fh.write('x')
+        with mock.patch.object(runner, 'run', return_value=0) as run:
+            runner.main(['run', apk, os.path.join(d, 'wd'), '--module', 'rel/mod'])
+        self.assertEqual(run.call_args.args[0].module, os.path.abspath('rel/mod'))
+
+
     def test_missing_apk_rejected_before_workdir_created(self):
         d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d, ignore_errors=True)
         wd = os.path.join(d, 'wd')

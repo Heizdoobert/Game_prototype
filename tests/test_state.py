@@ -1,4 +1,4 @@
-import os, shutil, tempfile, unittest
+import contextlib, io, os, shutil, tempfile, unittest
 from apk2proto.state import Workdir, fingerprint
 
 class StateTests(unittest.TestCase):
@@ -10,6 +10,13 @@ class StateTests(unittest.TestCase):
         w = Workdir(self.d); self.assertFalse(w.is_done('s', 'k'))
         w.mark('s', 'k'); self.assertTrue(Workdir(self.d).is_done('s', 'k'))
         self.assertFalse(Workdir(self.d).is_done('s', 'other'))
+
+    def test_corrupt_state_is_empty_with_warning(self):
+        for bad in ('{not json', '[1, 2]', ''):
+            with open(os.path.join(self.d, 'state.json'), 'w') as fh: fh.write(bad)
+            with contextlib.redirect_stdout(io.StringIO()) as out: w = Workdir(self.d)
+            self.assertEqual(w.state, {}); self.assertIn('warning', out.getvalue()); self.assertIn('state.json', out.getvalue())
+        w.mark('s', 'k'); self.assertTrue(Workdir(self.d).is_done('s', 'k'))      # recovers
 
     def test_lock_is_exclusive(self):
         w1, w2 = Workdir(self.d), Workdir(self.d)
