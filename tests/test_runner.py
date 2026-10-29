@@ -275,7 +275,16 @@ class BuildRunTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out, self.assertRaises(SystemExit) as cm:
             self.build(''.join('line%d\n' % i for i in range(30)))
         self.assertIn('build.log', str(cm.exception))
-        self.assertIn('line29', out.getvalue()); self.assertIn('line20', out.getvalue()); self.assertNotIn('line19\n', out.getvalue())
+        self.assertIn('line29', out.getvalue()); self.assertIn('line25', out.getvalue()); self.assertNotIn('line24\n', out.getvalue())
+
+    def test_failure_output_shows_errors_then_tail_within_25_lines(self):
+        log = ''.join('noise %d\n' % i for i in range(100)) + ''.join('Assets/A.cs(%d): error CS0103: nope\n' % i for i in range(40)) \
+            + 'Exception: boom\n' + ''.join('tail %d\n' % i for i in range(30))
+        with contextlib.redirect_stdout(io.StringIO()) as out, self.assertRaises(SystemExit): self.build(log)
+        lines = out.getvalue().splitlines()
+        self.assertEqual(len(lines), 25)
+        self.assertEqual(sum('error CS' in l for l in lines), 20); self.assertIn('tail 29', lines); self.assertIn('tail 25', lines)
+        self.assertFalse(any(l.startswith('noise') for l in lines))
 
     def test_stale_log_deleted_before_run(self):
         with open(self.log, 'w') as fh: fh.write(self.OK)

@@ -77,6 +77,13 @@ def _mem_available_mb():
     except (OSError, ValueError): pass
     return None                                        # unknown (not Linux): do not block
 
+ERR = ('error CS', 'Exception', 'BUILD RESULT', 'Build Failed', 'error:')
+
+def _failure_lines(lines, errs=20, tail=5):
+    """first `errs` lines that look like errors, then the last `tail` lines (no repeats); at most errs + tail lines"""
+    hit = [i for i, l in enumerate(lines) if any(m in l for m in ERR)][:errs]
+    return [lines[i] for i in sorted(set(hit) | set(range(max(0, len(lines) - tail), len(lines))))]
+
 def st_build(wd, a):
     _need(BUILD_CHECKS, 'build')                       # adb is only for install
     mem = _mem_available_mb()
@@ -93,7 +100,7 @@ def st_build(wd, a):
         with open(log, errors='replace') as fh: ok = 'BUILD RESULT: Succeeded' in fh.read()
     if not ok:
         if os.path.exists(log):
-            with open(log, errors='replace') as fh: print(''.join(fh.readlines()[-10:]), end='')
+            with open(log, errors='replace') as fh: print(''.join(l if l.endswith('\n') else l + '\n' for l in _failure_lines(fh.readlines())), end='')
         raise SystemExit('build failed, see ' + log)
 
 def st_install(wd, a):
