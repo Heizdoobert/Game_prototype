@@ -142,4 +142,19 @@ class DistillTests(unittest.TestCase):
         self.assertEqual(spec['config'], [])
         validate(spec)                                                # trimming never drops required keys
 
+    def test_fit_shrinks_members_before_dropping_classes(self):
+        classes = [{'name': 'C%d' % i, 'namespace': '', 'kind': 'class',
+                    'fields': [['int', 'f%d' % j, '10'] for j in range(40)],
+                    'methods': ['m%d' % j for j in range(40)]} for i in range(50)]
+        spec = {'config': [{'asset': 'a', 'json': '{}'}], 'strings': [], 'classes': classes, 'coverage': {'trimmed': False}}
+        size = lambda: len(json.dumps(spec, separators=(',', ':')))
+        n5 = {**spec, 'classes': [dict(c, fields=c['fields'][:5], methods=c['methods'][:5]) for c in classes]}
+        limit = len(json.dumps(n5, separators=(',', ':')))         # met exactly after the n=5 step, not after n=15
+        self.assertGreater(size(), limit)
+        distill._fit(spec, limit)
+        self.assertEqual(len(spec['classes']), 50)
+        self.assertTrue(all(len(c['fields']) == 5 and len(c['methods']) == 5 for c in spec['classes']))
+        self.assertTrue(spec['coverage']['trimmed'])
+        self.assertEqual(spec['config'], [{'asset': 'a', 'json': '{}'}])
+
 if __name__ == '__main__': unittest.main()

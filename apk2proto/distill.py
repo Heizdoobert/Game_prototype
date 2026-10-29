@@ -116,11 +116,11 @@ def _fit(spec, limit):
     size = lambda: len(json.dumps(spec, separators=(',', ':')))
     if size() <= limit: return
     spec['coverage']['trimmed'] = True
-    for c in spec['classes']: c['fields'], c['methods'] = c['fields'][:15], c['methods'][:15]
-    if size() > limit: spec['config'] = []; spec['strings'] = spec['strings'][:50]
+    for n in (15, 5, 0):                       # shrink every class first, keep all of them while possible
+        for c in spec['classes']: c['fields'], c['methods'] = c['fields'][:n], c['methods'][:n]
+        if size() <= limit: return
+    spec['config'] = []; spec['strings'] = spec['strings'][:50]
     if size() > limit: spec['classes'] = spec['classes'][:100]
-    if size() > limit:
-        for c in spec['classes']: c['fields'], c['methods'] = [], []
 
 def distill(wd, limit=100_000):
     hints = json.loads(_read(os.path.join(wd, 'hints.json'), '{}'))
