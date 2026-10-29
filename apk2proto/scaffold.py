@@ -15,6 +15,7 @@ def scaffold(proto, template, module):
         shutil.rmtree(d, ignore_errors=True)
         if os.path.isdir(os.path.join(module, src)):
             shutil.copytree(os.path.join(module, src), d)
+    os.makedirs(os.path.join(proto, 'Tests~', 'Core.Tests', 'Game'), exist_ok=True)   # the harness fails on a Game/ dir with no test class
     with open(os.path.join(proto, 'build.json'), 'w') as fh:
         json.dump({'product': meta['name'], 'appId': 'com.proto.' + meta['id']}, fh)
     return meta

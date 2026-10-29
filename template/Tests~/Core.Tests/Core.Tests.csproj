@@ -6,6 +6,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants Condition="Exists('Game')">$(DefineConstants);HAS_GAME</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="*.cs" />

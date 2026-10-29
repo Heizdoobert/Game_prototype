@@ -35,6 +35,14 @@ class ScaffoldTests(unittest.TestCase):
         with open(os.path.join(p, 'build.json')) as fh:
             self.assertEqual(json.load(fh), {'product': 'Demo Game', 'appId': 'com.proto.demo'})
 
+    def test_harness_defines_has_game_and_game_dir_always_exists(self):
+        m, p = self.tmp(), os.path.join(self.tmp(), 'proto')
+        mk_module(m); shutil.rmtree(os.path.join(m, 'Tests'))        # module without tests: Game/ must still exist so the harness can fail
+        scaffold(p, paths.TEMPLATE, m)
+        with open(os.path.join(p, 'Tests~', 'Core.Tests', 'Core.Tests.csproj')) as fh: self.assertIn('HAS_GAME', fh.read())
+        with open(os.path.join(p, 'Tests~', 'Core.Tests', 'Program.cs')) as fh: self.assertIn('#if HAS_GAME', fh.read())
+        self.assertTrue(os.path.isdir(os.path.join(p, 'Tests~', 'Core.Tests', 'Game')))
+
     def test_rescaffold_replaces_game_files_keeps_unity_state(self):
         m, p = self.tmp(), os.path.join(self.tmp(), 'proto')
         mk_module(m)
