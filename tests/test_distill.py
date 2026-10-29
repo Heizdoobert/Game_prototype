@@ -174,6 +174,22 @@ class DistillTests(unittest.TestCase):
         self.assertIn('mono/GameSettings_1.json', [c['asset'] for c in spec['config']])
         self.assertNotIn('SECRE', self.spec_text(d))
 
+    def test_non_odin_game_secret_keys_masked_and_listed(self):
+        d = self.workdir()
+        fake = {'PassCheat': 'FAKEcheat-9999', 'sdkKey': 'FAKEsdk-key-0001', 'adUnitId': 'FAKEunit-0002', 'price': [1, 2, 3, 4, 5, 6, 7]}
+        write(d, 'assets_dump/mono/data__AppLovinSettings__x.json', json.dumps(fake))
+        spec = distill.distill(d)
+        self.assertIn('mono/data__AppLovinSettings__x.json', [c['asset'] for c in spec['config']])
+        text = self.spec_text(d)
+        for v in ('FAKEcheat-9999', 'FAKEsdk-key-0001', 'FAKEunit-0002'): self.assertNotIn(v, text)
+        for k in ('PassCheat', 'sdkKey', 'adUnitId'):
+            self.assertIn({'file': 'mono/data__AppLovinSettings__x.json', 'key': k}, spec['secrets'])
+
+    def test_masker_covers_numbers_and_lists_under_secret_keys(self):
+        out = distill._mask({'debugPin': 12345678, 'saltList': ['a', 'bbbbb'], 'n': 5, 'nested': [{'licenseKey': 'FAKE-lic-1'}], 'on': True})
+        self.assertEqual(out, {'debugPin': '<REDACTED>', 'saltList': '<REDACTED>', 'n': 5,
+                               'nested': [{'licenseKey': '<REDACTED>'}], 'on': True})
+
     def test_odin_keeps_keys_drops_values(self):
         d = self.workdir()
         raw = ['featureUnlock/', 'odinval9999secret', 'deadbeef12345678', 'authToken_x']

@@ -156,6 +156,18 @@ class KeyTests(unittest.TestCase):
         self.put('proto/Assets/Scripts/A.cs', 'changed!')
         self.assertTrue(all(before[n] != self.st[n].key(self.wd, self.a) for n in before))
 
+class VerifyStageTests(unittest.TestCase):
+    def test_passes_assets_dump_and_module_files(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        wd = runner.Workdir(d)
+        for rel in ('module/Core/A.cs', 'module/Library/skip.cs', 'module/img.png'):
+            os.makedirs(wd.p(*rel.split('/')[:-1]), exist_ok=True)
+            with open(wd.p(*rel.split('/')), 'w') as fh: fh.write('x')
+        with mock.patch.object(runner.V, 'verify', return_value=[]) as v: runner.st_verify(wd, args(d))
+        kw = v.call_args.kwargs
+        self.assertEqual(kw['assets_dump'], wd.p('assets_dump'))
+        self.assertEqual(kw['extra_text_files'], [wd.p('module', 'Core', 'A.cs')])
+
 class EngineTests(unittest.TestCase):
     def check(self, text):
         d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d, ignore_errors=True)

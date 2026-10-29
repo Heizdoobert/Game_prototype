@@ -39,7 +39,48 @@ def _leak_line(path):
             if redact.redact_text(line) != line: return n
     return 0
 
-def verify(project, apk_dir, spec_path=None):
+MAX_VALUES, MAX_VALUE_LEN, MAX_DUMP = 200, 200, 20_000_000
+TEXT_EXT = ('.cs', '.json', '.md', '.txt', '.asmdef')
+
+def _secret_values(spec_path, assets_dump):
+    """[(file, key, value)] of the original secret values named by spec['secrets'], read from the raw dump. Never reported."""
+    try:
+        with open(spec_path, encoding='utf-8') as fh: entries = json.load(fh).get('secrets', [])
+    except (OSError, ValueError, AttributeError, RecursionError): return []
+    out = []
+    def walk(node, rel, key):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == key:
+                    for x in (v if isinstance(v, list) else [v]):
+                        if isinstance(x, bool): continue
+                        s = x if isinstance(x, str) else str(x) if isinstance(x, int) and len(str(abs(x))) >= 6 else ''
+                        if len(s) >= 4 and s != '<REDACTED>' and len(s) <= MAX_VALUE_LEN and (rel, key, s) not in out: out.append((rel, key, s))
+                walk(v, rel, key)
+        elif isinstance(node, list):
+            for v in node: walk(v, rel, key)
+    for e in entries if isinstance(entries, list) else []:
+        if not (isinstance(e, dict) and isinstance(e.get('file'), str) and isinstance(e.get('key'), str)): continue
+        f = os.path.join(assets_dump, e['file'])
+        try:
+            if os.path.getsize(f) > MAX_DUMP: continue
+            with open(f, encoding='utf-8', errors='replace') as fh: walk(json.load(fh), e['file'], e['key'])
+        except (OSError, ValueError, RecursionError): continue
+    return out[:MAX_VALUES]
+
+def _value_hits(values, texts):
+    """problems for every exact substring hit of a secret value in the (label, path) files; names file+key, never the value"""
+    out = []
+    for label, path in texts:
+        try:
+            if os.path.getsize(path) > MAX_SCAN: continue
+            with open(path, encoding='utf-8', errors='replace') as fh: text = fh.read()
+        except OSError: continue
+        for rel, key, val in values:
+            if val in text: out.append(f'secret value from {rel}:{key} appears in {label}')
+    return out
+
+def verify(project, apk_dir, spec_path=None, assets_dump=None, extra_text_files=()):
     problems, orig = [], set()
     subs = [os.path.join(apk_dir, s) for s in ('assets', 'res')]
     if not any(os.path.isdir(d) for d in subs):
@@ -66,4 +107,11 @@ def verify(project, apk_dir, spec_path=None):
                 spec = _clip(spec)
                 if redact.redact_obj(spec) != spec: problems.append('possible secret in spec.json')
         except (OSError, ValueError, RecursionError): problems.append('spec.json unreadable')
+        values = _secret_values(spec_path, assets_dump) if assets_dump else []
+        if values:
+            d = os.path.dirname(os.path.abspath(spec_path))
+            texts = [(n, os.path.join(d, n)) for n in (os.path.basename(spec_path), 'spec_index.md', 'rules.md')]
+            texts += [(os.path.relpath(f, project), f) for f in _files(project, SKIP) if f.endswith(TEXT_EXT)]
+            texts += [(f, f) for f in extra_text_files]
+            problems += _value_hits(values, texts)
     return problems

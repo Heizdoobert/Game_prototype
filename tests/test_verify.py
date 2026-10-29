@@ -128,4 +128,62 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(verify(self.proj, self.apk), [])
         self.assertLess(time.monotonic() - t, 5)
 
+class VerifyAssetsDumpTests(unittest.TestCase):
+    """exact-value cross-check against assets_dump (FAKE values only)"""
+    def tmp(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d, ignore_errors=True); return d
+
+    def setUp(self):
+        self.apk, self.proj, self.wd = self.tmp(), self.tmp(), self.tmp()
+        put(self.apk, 'assets/tex.png', PNG)
+        put(self.proj, 'Assets/Scripts/A.cs', 'class A {}')
+        put(self.wd, 'assets_dump/mono/Cfg.json', json.dumps({'PassCheat': 'FAKEcheat-9999', 'a': {'sdkKey': 'FAKEsdk-0001'}, 'short': 'ab', 'done': '<REDACTED>', 'pin': 1234567}))
+        self.spec = put(self.wd, 'spec.json', json.dumps({'secrets': [
+            {'file': 'mono/Cfg.json', 'key': 'PassCheat'}, {'file': 'mono/Cfg.json', 'key': 'sdkKey'},
+            {'file': 'mono/Cfg.json', 'key': 'short'}, {'file': 'mono/Cfg.json', 'key': 'done'}, {'file': 'mono/Cfg.json', 'key': 'pin'}]}))
+        self.dump = os.path.join(self.wd, 'assets_dump')
+
+    def run_verify(self, **kw): return verify(self.proj, self.apk, self.spec, assets_dump=self.dump, **kw)
+
+    def assert_no_values(self, out):
+        for p in out:
+            for v in ('FAKEcheat-9999', 'FAKEsdk-0001', '1234567'): self.assertNotIn(v, p)
+
+    def test_clean(self): self.assertEqual(self.run_verify(), [])
+
+    def test_value_in_module_cs_detected(self):
+        put(self.proj, 'Assets/Scripts/B.cs', 'class B { const string P = "FAKEcheat-9999"; }')
+        out = self.run_verify()
+        self.assertEqual(len(out), 1); self.assertIn('PassCheat', out[0]); self.assertIn('mono/Cfg.json', out[0]); self.assertIn('B.cs', out[0])
+        self.assert_no_values(out)
+
+    def test_value_in_rules_and_index_detected(self):
+        put(self.wd, 'rules.md', 'the code is FAKEsdk-0001 ok'); put(self.wd, 'spec_index.md', 'cheat FAKEcheat-9999')
+        out = self.run_verify()
+        self.assertTrue(any('sdkKey' in p and 'rules.md' in p for p in out))
+        self.assertTrue(any('PassCheat' in p and 'spec_index.md' in p for p in out))
+        self.assert_no_values(out)
+
+    def test_value_in_spec_json_detected(self):
+        put(self.wd, 'spec.json', json.dumps({'secrets': [{'file': 'mono/Cfg.json', 'key': 'PassCheat'}], 'x': 'FAKEcheat-9999'}))
+        out = self.run_verify()
+        self.assertTrue(any('PassCheat' in p and 'spec.json' in p for p in out)); self.assert_no_values(out)
+
+    def test_extra_text_files_and_digits(self):
+        extra = put(self.tmp(), 'module/G.cs', 'int pin = 1234567;')
+        out = self.run_verify(extra_text_files=[extra])
+        self.assertEqual(len(out), 1); self.assertIn('pin', out[0]); self.assert_no_values(out)
+
+    def test_without_assets_dump_behaves_as_before(self):
+        put(self.proj, 'Assets/Scripts/B.cs', 'class B { const string P = "FAKEcheat-9999"; }')
+        self.assertEqual(verify(self.proj, self.apk, self.spec), [])
+
+    def test_short_and_redacted_values_ignored(self):
+        put(self.proj, 'Assets/Scripts/B.cs', 'var s = "ab"; var r = "<REDACTED>"; var n = 123456;')
+        self.assertEqual(self.run_verify(), [])
+
+    def test_missing_dump_file_skipped(self):
+        put(self.wd, 'spec.json', json.dumps({'secrets': [{'file': 'mono/gone.json', 'key': 'k'}]}))
+        self.assertEqual(self.run_verify(), [])
+
 if __name__ == '__main__': unittest.main()

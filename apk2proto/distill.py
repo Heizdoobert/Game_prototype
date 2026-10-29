@@ -44,7 +44,8 @@ def parse_dump(path):
 GAMEPLAY = r'board|level|piece|slot|booster|score|turn|match|tile|grid|wave|box|jar|tray|win|lose|revive|heart|coin|combo|move|goal|target|spawn|color'
 SCREEN = re.compile(r'(popup|panel|screen|dialog|window)$', re.I)
 CONFIGY = re.compile(r'config|setting|profile|data|table|rate', re.I)
-SECRETISH = re.compile(redact.KEY + r'|cheat|debug', re.I)
+SECRET_KEY = re.compile(redact.KEY + r'|pass|cheat|debug|sdk_?key|app_?key|unit_?id|licen[cs]e|signature|salt|keystore', re.I)
+SECRETISH = SECRET_KEY
 ODIN_KEY = re.compile(r'^[A-Za-z_][A-Za-z0-9_./-]{3,39}$')
 ODIN_SHAPE = re.compile(r'[a-z][A-Z]|[_/.]')
 MAX_JSON = 20_000_000
@@ -123,11 +124,19 @@ def _odin_strings(byte_list):
 def _secret_keys(node, rel, out):
     if isinstance(node, dict):
         for k, v in node.items():
-            if isinstance(v, str) and len(v) >= 4 and re.search(redact.KEY, k, re.I):
+            if isinstance(v, str) and len(v) >= 4 and SECRET_KEY.search(k):
                 if {'file': rel, 'key': k} not in out: out.append({'file': rel, 'key': k})
             else: _secret_keys(v, rel, out)
     elif isinstance(node, list):
         for v in node: _secret_keys(v, rel, out)
+
+def _mask(node):
+    # whole-value mask for any key the game-wide heuristic calls secret (kit redact_obj only knows its own narrow KEY)
+    if isinstance(node, dict):
+        return {k: ('<REDACTED>' if isinstance(k, str) and SECRET_KEY.search(k) and isinstance(v, (str, int, float, list)) and not isinstance(v, bool)
+                    else _mask(v)) for k, v in node.items()}
+    if isinstance(node, list): return [_mask(v) for v in node]
+    return node
 
 def _scan_assets(dump, notes):
     config, odin, secrets = [], [], []
@@ -147,7 +156,7 @@ def _scan_assets(dump, notes):
             d = _clip(d)
             if len(re.findall(r'[:\[,]-?\d+\.?\d*', json.dumps(d, separators=(',', ':')))) > 5:
                 # secret-named values are masked whole by redact_obj BEFORE the 8000 cut, so a cut never leaves half a secret
-                config.append({'asset': rel, 'json': json.dumps(redact.redact_obj(d), separators=(',', ':'))[:8000]})
+                config.append({'asset': rel, 'json': json.dumps(redact.redact_obj(_mask(d)), separators=(',', ':'))[:8000]})
         except Exception: _note(notes, 'skipped assets that could not be parsed')
     return config[:12], odin[:12], secrets
 

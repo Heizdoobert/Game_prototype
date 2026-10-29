@@ -47,7 +47,8 @@ def st_scaffold(wd, a): S.scaffold(wd.p('proto'), paths.TEMPLATE, _module(wd, a)
 def st_test(wd, a): sh(['dotnet', 'run', '--project', wd.p('proto', 'Tests~', 'Core.Tests')])
 
 def st_verify(wd, a):
-    problems = V.verify(wd.p('proto'), wd.p('apk'), wd.p('spec.json'))
+    extra = [f for f in V._files(_module(wd, a), V.SKIP) if f.endswith(V.TEXT_EXT)]
+    problems = V.verify(wd.p('proto'), wd.p('apk'), wd.p('spec.json'), assets_dump=wd.p('assets_dump'), extra_text_files=extra)
     if problems: raise SystemExit('verify failed:\n  ' + '\n  '.join(problems))
 
 def _mem_available_mb():
