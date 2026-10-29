@@ -7,7 +7,8 @@ namespace CandyJam.Core
     {
         public enum Style { OffsetGrid, Concentric, Banded }
 
-        const float Spacing = 1.2f;
+        public const float Spacing = 1.2f;
+        public const float BandWidth = Spacing * 1.5f;
         const float SameLayerGap = 1.0f; // candies on one layer must not overlap visually
 
         public static List<(float X, float Y, int Layer)> Build(int shape, Style style, int layers, int count, Random rng)
@@ -47,7 +48,6 @@ namespace CandyJam.Core
         static List<(float X, float Y, int Layer)> Relabel(List<(float X, float Y, int Layer)> cand, Style style, int layers, float radius, Random rng)
         {
             Shuffle(cand, rng);
-            float band = Spacing * 1.5f;
             var kept = new List<(float X, float Y, int Layer)>();
             foreach (var p in cand)
             {
@@ -57,7 +57,7 @@ namespace CandyJam.Core
                     float r = (float)Math.Sqrt(p.X * p.X + p.Y * p.Y);
                     layer = Math.Max(0, Math.Min(layers - 1, (int)((1f - r / radius) * layers)));
                 }
-                else layer = ((int)Math.Floor((p.X + radius) / band) % layers + layers) % layers;
+                else layer = BandLayer(p.X, radius, layers);
                 bool clash = false;
                 foreach (var k in kept)
                 {
@@ -69,7 +69,12 @@ namespace CandyJam.Core
             return kept;
         }
 
-        static void Shuffle<T>(IList<T> a, Random r)
+        public static int BandLayer(float x, float radius, int layers)
+        {
+            return ((int)Math.Floor((x + radius) / BandWidth) % layers + layers) % layers;
+        }
+
+        internal static void Shuffle<T>(IList<T> a, Random r)
         {
             for (int i = a.Count - 1; i > 0; i--)
             {

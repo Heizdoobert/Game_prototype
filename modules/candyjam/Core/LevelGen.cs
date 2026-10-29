@@ -44,7 +44,7 @@ namespace CandyJam.Core
             {
                 var p = new int[Rules.ShapeCount];
                 for (int i = 0; i < p.Length; i++) p[i] = i;
-                Shuffle(p, new Random(c * 7919 + attempt * 31 + 5));
+                Layout.Shuffle(p, new Random(c * 7919 + attempt * 31 + 5));
                 if (prev == null || SeamOk(prev, p)) return p;
             }
         }
@@ -59,28 +59,33 @@ namespace CandyJam.Core
         }
 
         // hashed so the style does not line up with the 8/15-level tier cadence
+        public static int LayersOf(int n)
+        {
+            var d = DifficultyOf(n);
+            return Math.Min(2 + n / 12 + (d == Difficulty.VeryHard ? 2 : d == Difficulty.Hard ? 1 : 0), 6);
+        }
+
         public static Layout.Style StyleOf(int n) { return (Layout.Style)(((uint)n * 2654435761u >> 16) % 3); }
 
         static LevelData Build(int number, int colors, int attempt)
         {
             var rng = new Random(number * 7919 + 13 + attempt * 101);
             var diff = DifficultyOf(number);
-            int extra = diff == Difficulty.VeryHard ? 2 : diff == Difficulty.Hard ? 1 : 0;
             double scale = diff == Difficulty.VeryHard ? 1.16 : diff == Difficulty.Hard ? 1.08 : 1.0;
             int count = Math.Min((int)(Math.Min(54 + (number - 1) * 2, 297) * scale), 297) / 3 * 3;
-            int layers = Math.Min(2 + number / 12 + extra, 6);
+            int layers = LayersOf(number);
             var pts = Layout.Build(ShapeOf(number), StyleOf(number), layers, count, rng);
 
             var ids = new List<int>();
             for (int i = 0; i < Rules.Palette; i++) ids.Add(i);
-            Shuffle(ids, rng);
+            Layout.Shuffle(ids, rng);
             var colorOf = new List<int>();
             for (int g = 0; g < count / 3; g++)
             {
                 int c = ids[g % colors];
                 colorOf.Add(c); colorOf.Add(c); colorOf.Add(c);
             }
-            Shuffle(colorOf, rng);
+            Layout.Shuffle(colorOf, rng);
 
             var specs = new CandySpec[count];
             for (int i = 0; i < count; i++) specs[i] = new CandySpec(pts[i].X, pts[i].Y, pts[i].Layer, colorOf[i]);
@@ -97,15 +102,6 @@ namespace CandyJam.Core
                     return new[] { new ProgressRow(50, new[] { 80, 20, 5, 1 }), new ProgressRow(100, new[] { 60, 30, 10, 5, 1 }) };
                 default:
                     return new[] { new ProgressRow(100, new[] { 1 }) };
-            }
-        }
-
-        static void Shuffle<T>(IList<T> a, Random r)
-        {
-            for (int i = a.Count - 1; i > 0; i--)
-            {
-                int j = r.Next(i + 1);
-                T tmp = a[i]; a[i] = a[j]; a[j] = tmp;
             }
         }
     }

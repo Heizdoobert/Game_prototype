@@ -40,8 +40,9 @@ namespace CandyJam.Core
                     return Dist(u, v, 0f, -0.1f) <= 0.8f || (v >= 0.3f && v <= 1f && Math.Abs(au - 0.5f) <= 0.3f * (1f - v) / 0.7f);
                 case 13: return (v >= -0.1f && r <= 1f) || (au <= 0.35f && v >= -1f && v < -0.1f); // mushroom
                 case 14: return (v >= 0.1f && v <= 1f && au <= (1f - v) / 0.9f) || (au <= 0.28f && v >= -1f && v < 0.1f); // arrow
-                default: // ghost: half-disc head, wavy-bottomed body
+                case 15: // ghost: half-disc head, wavy-bottomed body
                     return (v >= 0f && r <= 0.8f) || (au <= 0.8f && v < 0f && v >= -0.75f + 0.15f * (float)Math.Sin(8.0 * u));
+                default: throw new ArgumentOutOfRangeException("shape");
             }
         }
 

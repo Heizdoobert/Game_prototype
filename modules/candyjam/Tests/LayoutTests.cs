@@ -7,9 +7,15 @@ static class LayoutTests
     public static void Run()
     {
         T.Check(Rules.ShapeCount == 16, "16 silhouettes");
+        bool threw = false;
+        try { Shapes.Inside(16, 0f, 0f); } catch (ArgumentOutOfRangeException) { threw = true; }
+        T.Check(threw, "unknown shape index throws");
+        Determinism();
+        LayerRule();
         ShapeAreas();
         ShapeSchedule();
         StyleLayouts();
+        StyleStructure();
         CountsTiersScores();
     }
 
@@ -35,7 +41,6 @@ static class LayoutTests
             int s = LevelGen.ShapeOf(n);
             T.Check(s >= 0 && s < Rules.ShapeCount, "level " + n + " shape in range");
             seen.Add(s);
-            T.Check(s == LevelGen.ShapeOf(n), "level " + n + " shape deterministic");
         }
         T.Check(seen.Count == Rules.ShapeCount, "levels 1-64 use all 16 shapes");
         for (int c = 0; c < 4; c++)
@@ -76,6 +81,64 @@ static class LayoutTests
                     }
                     T.Check(distinct.Count >= 2, tag + " uses >= 2 layers");
                 }
+    }
+
+    static void StyleStructure()
+    {
+        for (int shape = 0; shape < Rules.ShapeCount; shape++)
+        {
+            float radius;
+            var og = Layout.Build(shape, Layout.Style.OffsetGrid, 4, 90, new Random(shape + 1), out radius);
+            foreach (var p in og)
+            {
+                double cell = (p.X - (p.Layer % 2) * Layout.Spacing / 2f) / Layout.Spacing;
+                T.Check(Math.Abs(cell - Math.Round(cell)) < 1e-3, "OffsetGrid shape" + shape + " layer " + p.Layer + " sits on its lattice (odd layers half-offset)");
+            }
+
+            var bd = Layout.Build(shape, Layout.Style.Banded, 4, 90, new Random(shape + 1), out radius);
+            foreach (var p in bd)
+                T.Check(p.Layer == Layout.BandLayer(p.X, radius, 4), "Banded shape" + shape + " layer follows the x stripe");
+
+            var cc = Layout.Build(shape, Layout.Style.Concentric, 3, 90, new Random(shape + 1), out radius);
+            // the ring shape has no centre, so compare the lowest and highest layers actually present
+            int lo = 99, hi = -1;
+            foreach (var p in cc) { lo = Math.Min(lo, p.Layer); hi = Math.Max(hi, p.Layer); }
+            double rLow = 0, rTop = 0; int nLow = 0, nTop = 0;
+            foreach (var p in cc)
+            {
+                double r = Math.Sqrt(p.X * p.X + p.Y * p.Y);
+                if (p.Layer == lo) { rLow += r; nLow++; } else if (p.Layer == hi) { rTop += r; nTop++; }
+            }
+            T.Check(hi > lo && nLow > 0 && nTop > 0 && rLow / nLow > rTop / nTop, "Concentric shape" + shape + " outer ring is layer 0, centre is top");
+        }
+    }
+
+    static void Determinism()
+    {
+        var a = Layout.Build(3, Layout.Style.Concentric, 3, 60, new Random(7));
+        var b = Layout.Build(3, Layout.Style.Concentric, 3, 60, new Random(7));
+        bool same = a.Count == b.Count;
+        for (int i = 0; same && i < a.Count; i++) same = a[i] == b[i];
+        T.Check(same, "Layout.Build is deterministic for a seed");
+        foreach (int n in new[] { 3, 8, 15, 40 })
+        {
+            var p = LevelGen.Generate(n);
+            var q = LevelGen.Generate(n);
+            bool eq = p.Candies.Length == q.Candies.Length;
+            for (int i = 0; eq && i < p.Candies.Length; i++)
+                eq = p.Candies[i].X == q.Candies[i].X && p.Candies[i].Y == q.Candies[i].Y
+                    && p.Candies[i].Layer == q.Candies[i].Layer && p.Candies[i].Color == q.Candies[i].Color;
+            T.Check(eq, "Generate(" + n + ") is deterministic");
+        }
+    }
+
+    static void LayerRule()
+    {
+        // min(2 + n/12 + tier extra, 6), Hard +1, VeryHard +2
+        int[] ns = { 1, 8, 11, 15, 24, 30, 60, 100 };
+        int[] want = { 2, 3, 2, 5, 5, 6, 6, 6 };
+        for (int i = 0; i < ns.Length; i++)
+            T.Check(LevelGen.LayersOf(ns[i]) == want[i], "layers of level " + ns[i] + " = " + LevelGen.LayersOf(ns[i]));
     }
 
     static int NormalCurve(int n) { return Math.Min(54 + (n - 1) * 2, 297) / 3 * 3; }
