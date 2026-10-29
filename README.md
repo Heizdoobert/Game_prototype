@@ -79,5 +79,7 @@ The generated prototype is not a byte-for-byte port of the hand-made `CandyJam`:
 
 - UI strings differ (for example "You lost").
 - The save key is `proto.profile`.
-- The booster inventory is padded with 3 of each booster.
+- Boosters have unlock levels (AddHole 2, Vacuum 5, Broom 7, Rainbow 9, AddJar 4, Needle 12); each starts at 0 and the player gets 3 free on reaching its level. A booster with unlock level 1 starts at 3.
+- Needle (6th booster) is a guess: tap any candy, covered or not.
+- Retry and Home from the Lose screen ask "You will lose all of your progress!" first.
 - Revive pays only after a successful revive.
