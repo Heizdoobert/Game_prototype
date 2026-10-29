@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Proto.Shell
 {
@@ -51,6 +52,20 @@ namespace Proto.Shell
         }
 
         public void Win(int coins) { Coins += coins; Level++; }
+
+        // call once per win, after Win raised Level; idempotence is the caller's job. Arrays may be shorter than Boosters.
+        public List<int> GrantUnlocks(int[] unlock, int[] free)
+        {
+            var got = new List<int>();
+            int n = Math.Min(Math.Min(unlock.Length, free.Length), Boosters.Length);
+            for (int i = 0; i < n; i++)
+            {
+                if (unlock[i] != Level) continue;
+                Boosters[i] += free[i];
+                got.Add(i);
+            }
+            return got;
+        }
 
         public bool PayRevive()
         {
