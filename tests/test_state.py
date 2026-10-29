@@ -26,4 +26,21 @@ class StateTests(unittest.TestCase):
         self.assertNotEqual(a, fingerprint(f))
         self.assertNotEqual(fingerprint(f), fingerprint(os.path.join(self.d, 'missing')))
 
+    def test_suffix_filter_ignores_meta_and_tracks_cs(self):
+        a = os.path.join(self.d, 'A.cs')
+        with open(a, 'w') as fh: fh.write('x')
+        base = fingerprint(self.d, suffixes=('.cs',))
+        with open(a + '.meta', 'w') as fh: fh.write('guid')
+        self.assertEqual(base, fingerprint(self.d, suffixes=('.cs',)))
+        self.assertNotEqual(base, fingerprint(self.d))               # unfiltered sees the .meta
+        with open(a, 'w') as fh: fh.write('xyz')
+        self.assertNotEqual(base, fingerprint(self.d, suffixes=('.cs',)))
+
+    def test_suffix_filter_on_file_argument(self):
+        j = os.path.join(self.d, 'a.json')
+        with open(j, 'w') as fh: fh.write('x')
+        a = fingerprint(j, suffixes=('.cs',))
+        with open(j, 'w') as fh: fh.write('xyz')
+        self.assertEqual(a, fingerprint(j, suffixes=('.cs',)))
+
 if __name__ == '__main__': unittest.main()

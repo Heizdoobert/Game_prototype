@@ -24,14 +24,18 @@ class Workdir:
             except BlockingIOError: raise SystemExit('another apk2proto stage is running in ' + self.path)
             yield
 
-def fingerprint(*paths):
+def fingerprint(*paths, suffixes=None):
+    """suffixes: only hash files whose name ends with one of them (ignores generated .meta etc.)."""
     h = hashlib.sha1()
+    keep = lambda name: suffixes is None or name.endswith(tuple(suffixes))
     for p in paths:
         if os.path.isfile(p):
+            if not keep(p): continue
             st = os.stat(p); h.update(f'{p}:{st.st_size}:{int(st.st_mtime)}'.encode())
         elif os.path.isdir(p):
             for dp, _, fs in sorted(os.walk(p)):
                 for f in sorted(fs):
+                    if not keep(f): continue
                     fp = os.path.join(dp, f); st = os.stat(fp)
                     h.update(f'{os.path.relpath(fp, p)}:{st.st_size}:{int(st.st_mtime)}'.encode())
         else: h.update(f'missing:{p}'.encode())

@@ -32,7 +32,10 @@ def st_detect(wd, a):
     sh([_kit('unpack.sh'), a.apk, wd.path])
     _check_engine(wd.p('engine.txt'))
 
-def st_dump(wd, a): sh([_kit('run_all.sh'), a.apk, wd.path, 'meta dump assets'])
+def st_dump(wd, a):
+    sh([_kit('run_all.sh'), a.apk, wd.path, 'meta dump assets'])
+    if not os.path.isfile(wd.p('il2cpp', 'dump.cs')):
+        raise SystemExit('dump produced no il2cpp/dump.cs (see the kit output above)')
 def st_distill(wd, a): D.distill(wd.path)
 
 def st_author(wd, a):
@@ -70,27 +73,53 @@ def st_build(wd, a):
     ok = False
     if os.path.exists(log):
         with open(log, errors='replace') as fh: ok = 'BUILD RESULT: Succeeded' in fh.read()
-    if not ok: raise SystemExit('build failed, see ' + log)
+    if not ok:
+        if os.path.exists(log):
+            with open(log, errors='replace') as fh: print(''.join(fh.readlines()[-10:]), end='')
+        raise SystemExit('build failed, see ' + log)
 
 def st_install(wd, a):
     with open(wd.p('proto', 'build.json')) as fh: app_id = json.load(fh)['appId']
     sh(['adb', 'install', '-r', wd.p('proto', 'Builds', 'game.apk')])
     sh(['adb', 'shell', 'monkey', '-p', app_id, '-c', 'android.intent.category.LAUNCHER', '1'])
 
+def _engine_is_unity(wd):
+    try:
+        with open(wd.p('engine.txt')) as fh: first = fh.read().split('\n')[0].strip()
+    except OSError: return False
+    return first == 'Unity' and os.path.isdir(wd.p('apk'))
+
+def _cat(*digests): return ''.join(digests)
+
+def _src(wd): return fingerprint(wd.p('proto', 'Assets', 'Scripts'), wd.p('proto', 'Tests~', 'Core.Tests', 'Game'), suffixes=('.cs',))
+
+# Unity rewrites scenes and adds .meta files during a build, so test/verify/build keys hash only hand-written inputs
+def _k_test(wd, a): return _src(wd) if os.path.isdir(wd.p('proto')) else None
+def _k_verify(wd, a):
+    return _cat(_src(wd), fingerprint(wd.p('spec.json'), wd.p('proto', 'build.json'))) if os.path.isdir(wd.p('proto')) else None
+def _k_build(wd, a):
+    if not os.path.isfile(wd.p('proto', 'Builds', 'game.apk')): return None
+    return _cat(fingerprint(wd.p('proto', 'Assets', 'Scripts'), wd.p('proto', 'Assets', 'Editor'), suffixes=('.cs',)),
+                fingerprint(wd.p('proto', 'build.json'), wd.p('proto', 'Packages', 'manifest.json'), wd.p('proto', 'ProjectSettings', 'ProjectVersion.txt')))
+
 STAGES = [
-    Stage('detect', st_detect, lambda wd, a: fingerprint(a.apk), lambda wd: os.path.isfile(wd.p('engine.txt')) and os.path.isdir(wd.p('apk'))),
+    Stage('detect', st_detect, lambda wd, a: fingerprint(a.apk), _engine_is_unity),
     Stage('dump', st_dump, lambda wd, a: fingerprint(a.apk), lambda wd: os.path.isfile(wd.p('il2cpp', 'dump.cs'))),
-    Stage('distill', st_distill, lambda wd, a: fingerprint(wd.p('il2cpp', 'dump.cs'), wd.p('assets_dump'), wd.p('hints.json')), None),
+    Stage('distill', st_distill, lambda wd, a: fingerprint(wd.p('il2cpp', 'dump.cs'), wd.p('il2cpp', 'stringliteral.json'), wd.p('assets_dump'),
+                                                          wd.p('hints.json'), wd.p('engine.txt'), wd.p('manifest_badging.txt')), None),
     Stage('author', st_author, lambda wd, a: fingerprint(_module(wd, a)), None),
     Stage('scaffold', st_scaffold, lambda wd, a: fingerprint(_module(wd, a), paths.TEMPLATE), None),
-    Stage('test', st_test, lambda wd, a: fingerprint(wd.p('proto', 'Assets'), wd.p('proto', 'Tests~', 'Core.Tests', 'Game')), None),
-    Stage('verify', st_verify, lambda wd, a: fingerprint(wd.p('proto', 'Assets'), wd.p('spec.json')), None),
-    Stage('build', st_build, lambda wd, a: fingerprint(wd.p('proto', 'Assets'), wd.p('proto', 'build.json')), None),
+    Stage('test', st_test, _k_test, None),
+    Stage('verify', st_verify, _k_verify, None),
+    Stage('build', st_build, _k_build, None),
     Stage('install', st_install, lambda wd, a: None, None),
 ]
 
 def run(a, stages=None):
     stages = stages or STAGES
+    names = [st.name for st in stages]
+    for n in (a.start, a.only):
+        if n and n not in names: raise SystemExit('unknown stage %s; stages: %s' % (n, ', '.join(names)))
     wd = Workdir(a.workdir)
     started = a.start is None
     with wd.lock():
@@ -107,6 +136,9 @@ def run(a, stages=None):
             except Paused: return 3
             except subprocess.CalledProcessError as e:
                 print('stage %s failed (exit %s): %s' % (st.name, e.returncode, ' '.join(map(str, e.cmd)))); return 1
+            except FileNotFoundError as e:
+                print('stage %s failed: %s not found' % (st.name, e.filename)); return 1
+            if key is None: key = st.key(wd, a)   # build's key needs its own output (Builds/game.apk)
             if key is not None: wd.mark(st.name, key)
     return 0
 
@@ -118,4 +150,5 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == 'doctor': return DR.main()
     a.apk = os.path.abspath(a.apk)
+    if not os.path.isfile(a.apk): raise SystemExit('apk not found: ' + a.apk)
     return run(a)
