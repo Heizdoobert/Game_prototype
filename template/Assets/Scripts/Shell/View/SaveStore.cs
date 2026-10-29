@@ -6,7 +6,7 @@ namespace Proto.Shell
     {
         const string Key = "proto.profile";
 
-        public static Profile Load(int boosterCount)
+        public static Profile Load(int[] startCounts)
         {
             var p = new Profile();
             try
@@ -15,16 +15,14 @@ namespace Proto.Shell
                 if (!string.IsNullOrEmpty(json)) JsonUtility.FromJsonOverwrite(json, p);
             }
             catch (System.Exception) { p = new Profile(); }
-            Sanitise(p, boosterCount);
+            Sanitise(p, startCounts);
             return p;
         }
 
         // a hand-edited / corrupt save must never break the app shell
-        static void Sanitise(Profile p, int n)
+        static void Sanitise(Profile p, int[] start)
         {
-            var b = new int[n];
-            for (int i = 0; i < n; i++) b[i] = p.Boosters != null && i < p.Boosters.Length ? p.Boosters[i] : 3;
-            p.Boosters = b;
+            p.PadBoosters(start);
             p.Hearts = Mathf.Clamp(p.Hearts, 0, Profile.Cfg.MaxHearts);
             if (p.Level < 1) p.Level = 1;
             if (p.Coins < 0) p.Coins = 0;

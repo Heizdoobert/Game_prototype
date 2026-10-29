@@ -27,7 +27,7 @@ namespace Proto.Shell
         {
             mod = FindModule();
             Profile.Cfg = mod.Config;
-            profile = SaveStore.Load(mod.Boosters.Length);
+            profile = SaveStore.Load(mod.Boosters.Select(b => b.UnlockLevel <= 1 ? 3 : 0).ToArray()); // later unlocks start empty and get their free grant at the unlock level
             cam = Camera.main;
             if (cam == null) cam = new GameObject("Camera", typeof(Camera), typeof(AudioListener)) { tag = "MainCamera" }.GetComponent<Camera>();
             cam.orthographic = true;

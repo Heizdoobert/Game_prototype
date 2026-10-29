@@ -28,5 +28,15 @@ static class ProfileUnlockTests
         var s = new Profile { Level = 5, Boosters = new[] { 0 } };
         got = s.GrantUnlocks(new[] { 5, 5 }, new[] { 3, 3 });
         T.Check(got.Count == 1 && s.Boosters[0] == 3, "arrays longer than Boosters: extra entries ignored");
+
+        var pad = new Profile { Boosters = null };
+        pad.PadBoosters(new[] { 3, 0, 3 });
+        T.Check(pad.Boosters.Length == 3 && pad.Boosters[0] == 3 && pad.Boosters[1] == 0 && pad.Boosters[2] == 3, "null inventory padded with the start counts");
+        pad.Boosters = new[] { 7, 9 };
+        pad.PadBoosters(new[] { 3, 0, 3 });
+        T.Check(pad.Boosters.Length == 3 && pad.Boosters[0] == 7 && pad.Boosters[1] == 9 && pad.Boosters[2] == 3, "shorter inventory keeps stored values, pads only missing slots");
+        pad.Boosters = new[] { 1, 2, 3, 4 };
+        pad.PadBoosters(new[] { 3, 0, 3 });
+        T.Check(pad.Boosters.Length == 3 && pad.Boosters[2] == 3 && pad.Boosters[0] == 1, "longer inventory truncated");
     }
 }

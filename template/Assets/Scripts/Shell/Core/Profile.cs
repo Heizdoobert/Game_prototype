@@ -53,6 +53,14 @@ namespace Proto.Shell
 
         public void Win(int coins) { Coins += coins; Level++; }
 
+        // inventory sized to start.Length: stored slots kept, missing ones start at start[i], extras dropped
+        public void PadBoosters(int[] start)
+        {
+            var b = new int[start.Length];
+            for (int i = 0; i < b.Length; i++) b[i] = Boosters != null && i < Boosters.Length ? Boosters[i] : start[i];
+            Boosters = b;
+        }
+
         // call once per win, after Win raised Level; idempotence is the caller's job. Arrays may be shorter than Boosters.
         public List<int> GrantUnlocks(int[] unlock, int[] free)
         {
