@@ -3,7 +3,7 @@ namespace CandyJam.Core
     public enum Difficulty { Normal, Hard, VeryHard }
     public enum TapResult { Rejected, ToJar, ToTray }
     public enum GameState { Playing, Won, Lost }
-    public enum BoosterKind { AddHole, Rainbow, Vacuum, Broom, AddJar }
+    public enum BoosterKind { AddHole, Rainbow, Vacuum, Broom, AddJar, Needle }
     public enum BoosterResult { Success, Unusable, LimitReached }
 
     public static class Rules
@@ -20,8 +20,12 @@ namespace CandyJam.Core
         public const int HeartRegenMinutes = 20;
         public const int StartCoins = 1500;
         public const int ReviveCost = 900;
-        // indexed by BoosterKind; original 3-pack prices 1200/1500/1500/2100 divided by 3, AddJar tuned
-        public static readonly int[] BoosterPrice = { 400, 500, 500, 700, 400 };
+        // indexed by BoosterKind; original 3-pack prices 1200/1500/1500/2100 divided by 3, AddJar tuned, Needle [tuned]
+        public static readonly int[] BoosterPrice = { 400, 500, 500, 700, 400, 500 };
+
+        // by BoosterKind index: unlock level and free grant on unlock (KB 02_gameplay_rules)
+        public static readonly int[] UnlockLevel = { 2, 9, 5, 7, 4, 12 };
+        public const int FreeOnUnlock = 3;
 
         public static int WinCoins(Difficulty d)
         {
