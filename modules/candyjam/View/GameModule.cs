@@ -7,14 +7,14 @@ namespace CandyJam.View
     [UnityEngine.Scripting.Preserve]
     public sealed class GameModule : IGameModule
     {
-        static readonly string[] Names = { "Hole", "Rainbow", "Vacuum", "Broom", "Jar" };
+        static readonly string[] Names = { "Hole", "Rainbow", "Vacuum", "Broom", "Jar", "Needle" };
         readonly BoosterDef[] boosters;
         PlayController ctl;
 
         public GameModule()
         {
             boosters = new BoosterDef[Names.Length];
-            for (int i = 0; i < Names.Length; i++) boosters[i] = new BoosterDef { Name = Names[i], Price = Rules.BoosterPrice[i] };
+            for (int i = 0; i < Names.Length; i++) boosters[i] = new BoosterDef { Name = Names[i], Price = Rules.BoosterPrice[i], UnlockLevel = Rules.UnlockLevel[i], FreeOnUnlock = Rules.FreeOnUnlock };
         }
 
         public string Name { get { return "Candy Jam"; } }

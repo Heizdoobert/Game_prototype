@@ -14,6 +14,7 @@ namespace CandyJam.View
         public event Action<string> Message;
         public Game Game { get; private set; }
         public bool RainbowPending { get; private set; }
+        public bool NeedlePending { get; private set; }
 
         BoardView board;
         JarTrayView tray;
@@ -33,7 +34,7 @@ namespace CandyJam.View
             tray.gameObject.SetActive(true);
             board.Build(Game, new Vector2(0f, 0.4f), 8.6f, 9.2f);
             tray.Refresh(Game);
-            busy = false; RainbowPending = false; ended = false;
+            busy = false; RainbowPending = false; NeedlePending = false; ended = false;
         }
 
         public void Stop()
@@ -43,6 +44,7 @@ namespace CandyJam.View
             fly = null;
             ended = false;
             RainbowPending = false;
+            NeedlePending = false;
             Game = null;
             if (board != null) { board.Clear(); board.gameObject.SetActive(false); }
             if (tray != null) tray.gameObject.SetActive(false);
@@ -54,7 +56,7 @@ namespace CandyJam.View
             if (!Input.GetMouseButtonDown(0)) return;
             if (OverUi()) return;
             Vector2 p = cam.ScreenToWorldPoint(Input.mousePosition);
-            var c = board.Hit(p);
+            var c = NeedlePending ? board.HitAny(p) : board.Hit(p);
             if (c == null) return;
             if (RainbowPending)
             {
@@ -65,7 +67,14 @@ namespace CandyJam.View
                 Sync();
                 return;
             }
-            StartCoroutine(DoTap(c));
+            if (NeedlePending)
+            {
+                NeedlePending = false;
+                if (!CanPay(BoosterKind.Needle)) { Say("Not enough coins"); Sync(); return; }
+                StartCoroutine(DoTap(c, true));
+                return;
+            }
+            StartCoroutine(DoTap(c, false));
         }
 
         static bool OverUi()
@@ -76,12 +85,19 @@ namespace CandyJam.View
                 : EventSystem.current.IsPointerOverGameObject();
         }
 
-        IEnumerator DoTap(Candy c)
+        IEnumerator DoTap(Candy c, bool needle)
         {
             busy = true;
             Vector3 from = board.PosOf(c);
             Color col = Palette.Candy[c.Color];
-            var r = Game.Tap(c, out int dest);
+            TapResult r;
+            int dest;
+            if (needle)
+            {
+                if (Game.UseNeedle(c, out r, out dest) != BoosterResult.Success) { Say("Can't use that now"); busy = false; Sync(); yield break; }
+                Pay(BoosterKind.Needle);
+            }
+            else r = Game.Tap(c, out dest);
             if (r == TapResult.Rejected) { busy = false; yield break; }
             fly = new GameObject("fly").AddComponent<SpriteRenderer>();
             fly.sprite = Sprites.Disc; fly.color = col; fly.sortingOrder = 100;
@@ -106,11 +122,19 @@ namespace CandyJam.View
             if (!CanPay(k)) { Say("Not enough coins"); return; }
             if (k == BoosterKind.Rainbow)
             {
+                NeedlePending = false;
                 RainbowPending = !RainbowPending;
                 if (RainbowPending) Say("Tap a candy: its colour gets a jar");
                 return;
             }
-            RainbowPending = false; // a pending Rainbow must not survive spending coins elsewhere
+            if (k == BoosterKind.Needle)
+            {
+                RainbowPending = false;
+                NeedlePending = !NeedlePending;
+                return;
+            }
+            RainbowPending = false; // a pending Rainbow/Needle must not survive spending coins elsewhere
+            NeedlePending = false;
             BoosterResult r;
             switch (k)
             {
@@ -128,7 +152,7 @@ namespace CandyJam.View
         void Pay(BoosterKind k) { profile.Pay((int)k, Rules.BoosterPrice[(int)k]); }
 
         public PlayStatus Status { get { return Game == null ? PlayStatus.Playing : (PlayStatus)(int)Game.State; } }
-        public string Hint { get { return RainbowPending ? "Tap a candy: its colour gets a jar" : null; } }
+        public string Hint { get { return RainbowPending ? "Tap a candy: its colour gets a jar" : NeedlePending ? "Tap any candy to pick it" : null; } }
         void IPlay.UseBooster(int id) { UseBooster((BoosterKind)id); }
 
         public bool Revive()

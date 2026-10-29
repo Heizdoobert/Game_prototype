@@ -10,6 +10,7 @@ namespace CandyJam.View
 
         SpriteRenderer[] jarFrame, jarFill, trayFrame, trayCandy;
         SpriteRenderer[][] pips;
+        Game game;
 
         public Vector3 JarWorld(int s) { return new Vector3((s - 1.5f) * 2.3f, JarY, 0f); }
         public Vector3 TrayWorld(int t) { return new Vector3((t - 3f) * 1.25f, TrayY, 0f); }
@@ -36,6 +37,17 @@ namespace CandyJam.View
             }
         }
 
+        // danger: the one free tray slot pulses red; no coroutine, the colour is a function of time
+        void Update()
+        {
+            if (game == null || trayFrame == null) return;
+            int free = -1;
+            if (game.TrayInDanger) for (int t = 0; t < game.TraySlots; t++) if (game.Tray[t] < 0) free = t;
+            float k = 0.5f + 0.5f * Mathf.Sin(Time.time * 8f);
+            for (int t = 0; t < Rules.TrayMax; t++)
+                trayFrame[t].color = t == free ? Color.Lerp(Color.white, new Color(1f, 0.2f, 0.2f), k) : Color.white;
+        }
+
         SpriteRenderer Make(string name, Sprite sprite, Vector3 pos, float scale, int order)
         {
             var go = new GameObject(name);
@@ -50,6 +62,7 @@ namespace CandyJam.View
 
         public void Refresh(Game g)
         {
+            game = g;
             for (int s = 0; s < Rules.JarSlots; s++)
             {
                 jarFrame[s].color = g.JarUnlocked[s] ? new Color(1f, 1f, 1f, 0.95f) : new Color(0.25f, 0.25f, 0.25f, 0.4f);

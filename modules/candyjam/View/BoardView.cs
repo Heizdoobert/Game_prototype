@@ -74,6 +74,22 @@ namespace CandyJam.View
             return best;
         }
 
+        // Needle: any live candy near the point, covered ones included; nearest centre wins so a candy under another stays pickable
+        public Candy HitAny(Vector2 world)
+        {
+            Candy best = null;
+            float bestD = float.MaxValue, reach = Rules.CandyRadius * Scale;
+            foreach (var kv in views)
+            {
+                var c = kv.Key;
+                if (c.Removed) continue;
+                float d = ((Vector2)kv.Value.transform.position - world).magnitude;
+                if (d > reach) continue;
+                if (best == null || d < bestD - 1e-4f || (d <= bestD + 1e-4f && c.Layer > best.Layer)) { best = c; bestD = d; }
+            }
+            return best;
+        }
+
         public Vector3 PosOf(Candy c) { return views[c].transform.position; }
     }
 }
