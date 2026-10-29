@@ -125,14 +125,21 @@ class DetectDumpTests(unittest.TestCase):
     def test_exists_false_without_apk_dir_or_engine(self):
         self.assertFalse(self.detect.exists(self.wd)); self.engine('Unity\n', apk=False); self.assertFalse(self.detect.exists(self.wd))
 
-    def test_dump_without_dump_cs_fails(self):
-        with mock.patch.object(runner, 'sh'), mock.patch.object(runner, '_need'), self.assertRaises(SystemExit) as cm: runner.st_dump(self.wd, args(self.d))
-        self.assertIn('il2cpp/dump.cs', str(cm.exception))
+    def run_dump(self, rc):
+        done = subprocess.CompletedProcess([], rc)
+        with mock.patch.object(runner.subprocess, 'run', return_value=done) as run, mock.patch.object(runner, '_need'), \
+             contextlib.redirect_stdout(io.StringIO()):
+            runner.st_dump(self.wd, args(self.d))
+        self.assertFalse(run.call_args.kwargs['check'])
 
-    def test_dump_with_dump_cs_ok(self):
+    def test_dump_without_dump_cs_fails(self):
+        with self.assertRaises(SystemExit) as cm: self.run_dump(1)
+        self.assertEqual(str(cm.exception), 'dump produced no il2cpp/dump.cs (kit exit 1)')
+
+    def test_dump_with_dump_cs_ok_even_if_kit_exits_1(self):
         os.makedirs(self.wd.p('il2cpp'))
         with open(self.wd.p('il2cpp', 'dump.cs'), 'w') as fh: fh.write('x')
-        with mock.patch.object(runner, 'sh'), mock.patch.object(runner, '_need'): runner.st_dump(self.wd, args(self.d))
+        self.run_dump(1); self.run_dump(0)
 
 class KitCheckTests(unittest.TestCase):
     def test_detect_and_dump_refuse_without_kit(self):

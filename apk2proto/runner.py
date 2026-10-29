@@ -40,9 +40,12 @@ def st_detect(wd, a):
 
 def st_dump(wd, a):
     _need(DUMP_CHECKS, 'dump')
-    sh([_kit('run_all.sh'), a.apk, wd.path, 'meta dump assets'])
+    cmd = [_kit('run_all.sh'), a.apk, wd.path, 'meta dump assets']
+    print('+', ' '.join(cmd), flush=True)
+    # the kit's run_all.sh can exit 1 after a good dump (trailing doctor|grep under pipefail): judge by the output only
+    rc = subprocess.run(cmd, check=False).returncode
     if not os.path.isfile(wd.p('il2cpp', 'dump.cs')):
-        raise SystemExit('dump produced no il2cpp/dump.cs (see the kit output above)')
+        raise SystemExit('dump produced no il2cpp/dump.cs (kit exit %s)' % rc)
 def st_distill(wd, a): D.distill(wd.path)
 
 def st_author(wd, a):
