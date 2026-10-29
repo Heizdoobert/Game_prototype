@@ -1,5 +1,6 @@
-import os, shutil, tempfile, unittest
+import json, os, shutil, tempfile, unittest
 from apk2proto import distill
+from apk2proto.schema import validate
 
 DUMP = '''// Image 0: Assembly-CSharp.dll - 0
 // Image 1: mscorlib.dll - 3
@@ -95,5 +96,50 @@ class ParseDumpTests(unittest.TestCase):
             '{\n'
             '}\n')
         self.assertEqual([t['name'] for t in types], ['A', 'B'])
+
+def build_workdir():
+    d = tempfile.mkdtemp()
+    write(d, 'il2cpp/dump.cs', DUMP)
+    write(d, 'manifest_badging.txt', "package: name='com.x.y' versionCode='7' versionName='1.2'\n")
+    write(d, 'engine.txt', 'Unity\nIL2CPP -> use bin/il2cpp_dump.sh\n')
+    write(d, 'assets_dump/player/bundle_summary.json',
+          json.dumps({'data.unity3d': {'script_classes': {'Image': 5, 'Button': 2}}}))
+    odin = list('featureUnlock'.encode('utf-16le'))
+    write(d, 'assets_dump/player/data__GameConfig__GameConfig__1.json',
+          json.dumps({'m_Name': 'GameConfig', 'serializationData': {'SerializedBytes': [1, 0] + odin + [0, 0]}}))
+    write(d, 'assets_dump/mono/a__Cfg__x__2.json', json.dumps({'serverPassword': '<REDACTED>', 'price': [1, 2, 3, 4, 5, 6]}))
+    return d
+
+class DistillTests(unittest.TestCase):
+    def workdir(self):
+        d = build_workdir(); self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        return d
+
+    def test_spec_is_valid_and_sections_filled(self):
+        d = self.workdir(); spec = distill.distill(d)
+        validate(spec)
+        with open(os.path.join(d, 'spec.json')) as fh: self.assertEqual(json.load(fh), spec)
+        self.assertEqual((spec['app']['package'], spec['app']['version'], spec['app']['engine']), ('com.x.y', '1.2', 'Unity'))
+        self.assertEqual(spec['enums']['ColorType'], {'Blue': '0', 'Red': '1'})
+        self.assertEqual(spec['constants']['BoardController'], {'MaxSlots': '5'})
+        self.assertEqual([c['name'] for c in spec['classes']], ['BoardController'])
+        self.assertEqual(spec['screens'], ['PausePopup'])
+        self.assertEqual(spec['levels']['script_classes'], {'Image': 5, 'Button': 2})
+        self.assertIn('featureUnlock', spec['config_odin'][0]['strings'])
+        self.assertEqual(spec['secrets'], [{'file': 'mono/a__Cfg__x__2.json', 'key': 'serverPassword'}])
+        self.assertTrue(os.path.exists(os.path.join(d, 'spec_index.md')))
+        self.assertIn('Odin', ' '.join(spec['coverage']['notes']))
+
+    def test_hints_widen_class_filter(self):
+        d = self.workdir(); write(d, 'hints.json', json.dumps({'keywords': ['Popup']}))
+        spec = distill.distill(d)
+        self.assertIn('PausePopup', [c['name'] for c in spec['classes']])
+
+    def test_limit_trims_and_flags(self):
+        d = self.workdir(); spec = distill.distill(d, limit=1)       # impossible limit: every trim step runs
+        self.assertTrue(spec['coverage']['trimmed'])
+        self.assertTrue(all(c['fields'] == [] and c['methods'] == [] for c in spec['classes']))
+        self.assertEqual(spec['config'], [])
+        validate(spec)                                                # trimming never drops required keys
 
 if __name__ == '__main__': unittest.main()
