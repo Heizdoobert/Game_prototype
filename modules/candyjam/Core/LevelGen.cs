@@ -5,10 +5,6 @@ namespace CandyJam.Core
 {
     public static class LevelGen
     {
-        const float Spacing = 1.2f;
-
-        struct Pt { public float X, Y; public int Layer; }
-
         public static Difficulty DifficultyOf(int n)
         {
             if (n >= 5 && n % 15 == 0) return Difficulty.VeryHard;
@@ -31,12 +27,49 @@ namespace CandyJam.Core
             throw new InvalidOperationException("no solvable layout for level " + number);
         }
 
+        // cycle through all silhouettes in a reshuffled order; a cycle never starts with the previous one's last shape
+        public static int ShapeOf(int n)
+        {
+            int cycle = (n - 1) / Rules.ShapeCount;
+            while (Perms.Count <= cycle) Perms.Add(NextPerm(Perms.Count));
+            return Perms[cycle][(n - 1) % Rules.ShapeCount];
+        }
+
+        static readonly List<int[]> Perms = new List<int[]>();
+
+        static int[] NextPerm(int c)
+        {
+            var prev = c > 0 ? Perms[c - 1] : null;
+            for (int attempt = 0; ; attempt++)
+            {
+                var p = new int[Rules.ShapeCount];
+                for (int i = 0; i < p.Length; i++) p[i] = i;
+                Shuffle(p, new Random(c * 7919 + attempt * 31 + 5));
+                if (prev == null || SeamOk(prev, p)) return p;
+            }
+        }
+
+        // equal shapes in neighbouring cycles must sit at least 8 levels apart (p-prev positions)
+        static bool SeamOk(int[] prev, int[] p)
+        {
+            var posPrev = new int[p.Length];
+            for (int i = 0; i < prev.Length; i++) posPrev[prev[i]] = i;
+            for (int i = 0; i < p.Length; i++) if (Rules.ShapeCount + i - posPrev[p[i]] < 8) return false;
+            return true;
+        }
+
+        // hashed so the style does not line up with the 8/15-level tier cadence
+        public static Layout.Style StyleOf(int n) { return (Layout.Style)(((uint)n * 2654435761u >> 16) % 3); }
+
         static LevelData Build(int number, int colors, int attempt)
         {
             var rng = new Random(number * 7919 + 13 + attempt * 101);
-            int count = Math.Min(54 + (number - 1) * 2, 297) / 3 * 3;
-            int layers = Math.Min(2 + number / 12, 5);
-            var pts = Layout((number - 1) % 5, layers, count, rng);
+            var diff = DifficultyOf(number);
+            int extra = diff == Difficulty.VeryHard ? 2 : diff == Difficulty.Hard ? 1 : 0;
+            double scale = diff == Difficulty.VeryHard ? 1.16 : diff == Difficulty.Hard ? 1.08 : 1.0;
+            int count = Math.Min((int)(Math.Min(54 + (number - 1) * 2, 297) * scale), 297) / 3 * 3;
+            int layers = Math.Min(2 + number / 12 + extra, 6);
+            var pts = Layout.Build(ShapeOf(number), StyleOf(number), layers, count, rng);
 
             var ids = new List<int>();
             for (int i = 0; i < Rules.Palette; i++) ids.Add(i);
@@ -51,7 +84,6 @@ namespace CandyJam.Core
 
             var specs = new CandySpec[count];
             for (int i = 0; i < count; i++) specs[i] = new CandySpec(pts[i].X, pts[i].Y, pts[i].Layer, colorOf[i]);
-            var diff = DifficultyOf(number);
             return new LevelData { Number = number, Diff = diff, Candies = specs, Rows = RowsFor(diff) };
         }
 
@@ -65,52 +97,6 @@ namespace CandyJam.Core
                     return new[] { new ProgressRow(50, new[] { 80, 20, 5, 1 }), new ProgressRow(100, new[] { 60, 30, 10, 5, 1 }) };
                 default:
                     return new[] { new ProgressRow(100, new[] { 1 }) };
-            }
-        }
-
-        // layered grid points inside a shape; odd layers are offset half a cell so they overlap (cover) lower ones
-        static List<Pt> Layout(int shape, int layers, int count, Random rng)
-        {
-            for (float radius = 2.5f; ; radius += 0.3f)
-            {
-                var all = new List<Pt>();
-                int n = (int)(radius / Spacing) + 2;
-                for (int l = 0; l < layers; l++)
-                {
-                    float off = (l % 2) * Spacing / 2f;
-                    for (int gx = -n; gx <= n; gx++)
-                        for (int gy = -n; gy <= n; gy++)
-                        {
-                            float x = gx * Spacing + off, y = gy * Spacing + off;
-                            if (Inside(shape, x / radius, y / radius)) all.Add(new Pt { X = x, Y = y, Layer = l });
-                        }
-                }
-                if (all.Count < count) continue;
-                Shuffle(all, rng);
-                all.RemoveRange(count, all.Count - count);
-                return all;
-            }
-        }
-
-        static bool Inside(int shape, float u, float v)
-        {
-            float r = (float)Math.Sqrt(u * u + v * v);
-            switch (shape)
-            {
-                case 0: return r <= 1f; // circle
-                case 1: // heart
-                {
-                    float a = u * 1.15f, b = v * 1.15f + 0.1f;
-                    float t = a * a + b * b - 1f;
-                    return t * t * t - a * a * b * b * b <= 0f;
-                }
-                case 2: // five-point star
-                {
-                    float th = (float)Math.Atan2(v, u);
-                    return r <= 0.72f + 0.28f * (float)Math.Cos(5.0 * (th - Math.PI / 2));
-                }
-                case 3: return r >= 0.45f && r <= 1f; // ring
-                default: return Math.Abs(u) + Math.Abs(v) <= 1f; // diamond
             }
         }
 
