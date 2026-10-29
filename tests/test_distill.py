@@ -48,4 +48,52 @@ class ParseDumpTests(unittest.TestCase):
         self.assertEqual(b['methods'], ['AddSlot'])
         self.assertEqual((e['kind'], e['members']), ('enum', {'Blue': '0', 'Red': '1'}))
 
+    def parse_text(self, text):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        return distill.parse_dump(write(d, 'dump.cs', text))
+
+    def test_generic_type_name_kept(self):
+        types = self.parse_text(
+            '// Image 0: Assembly-CSharp.dll - 0\n'
+            '// Namespace: \n'
+            'public class BasePackData<TConfig, TRemoteReward> : Base // TypeDefIndex: 0\n'
+            '{\n'
+            '}\n')
+        self.assertEqual([t['name'] for t in types], ['BasePackData<TConfig, TRemoteReward>'])
+
+    def test_generic_field_type_kept(self):
+        types = self.parse_text(
+            '// Image 0: Assembly-CSharp.dll - 0\n'
+            'public class Board // TypeDefIndex: 0\n'
+            '{\n'
+            '\tpublic Dictionary<ColorType, int> slotByColor; // 0x58\n'
+            '}\n')
+        self.assertEqual(types[0]['fields'], [['Dictionary<ColorType, int>', 'slotByColor', '58']])
+
+    def test_unparsed_header_does_not_leak_members(self):
+        types = self.parse_text(
+            '// Image 0: Assembly-CSharp.dll - 0\n'
+            'public class Prev // TypeDefIndex: 0\n'
+            '{\n'
+            '\tpublic int own; // 0x10\n'
+            '}\n'
+            'weird header // TypeDefIndex: 7\n'
+            '{\n'
+            '\tpublic int leaked; // 0x18\n'
+            '}\n')
+        self.assertEqual([t['name'] for t in types], ['Prev'])
+        self.assertEqual(types[0]['fields'], [['int', 'own', '10']])
+
+    def test_single_image_dump_returns_all_types(self):
+        # no "// Image 1:" line: fail-open, nothing is cut off
+        types = self.parse_text(
+            '// Image 0: Assembly-CSharp.dll - 0\n'
+            'public class A // TypeDefIndex: 0\n'
+            '{\n'
+            '}\n'
+            'public class B // TypeDefIndex: 1\n'
+            '{\n'
+            '}\n')
+        self.assertEqual([t['name'] for t in types], ['A', 'B'])
+
 if __name__ == '__main__': unittest.main()
