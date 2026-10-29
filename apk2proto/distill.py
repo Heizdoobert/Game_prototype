@@ -44,6 +44,10 @@ def parse_dump(path):
 GAMEPLAY = r'board|level|piece|slot|booster|score|turn|match|tile|grid|wave|box|jar|tray|win|lose|revive|heart|coin|combo|move|goal|target|spawn|color'
 SCREEN = re.compile(r'(popup|panel|screen|dialog|window)$', re.I)
 CONFIGY = re.compile(r'config|setting|profile|data|table|rate', re.I)
+SECRETISH = re.compile(r'password|passwd|secret|token|api[_ -]?key|private|auth|credential|cheat', re.I)
+ODIN_KEY = re.compile(r'^[A-Za-z_][A-Za-z0-9_./-]{3,39}$')
+ODIN_SHAPE = re.compile(r'[a-z][A-Z]|[_/.]')
+MAX_JSON = 20_000_000
 
 def _read(path, default=''):
     if not os.path.exists(path): return default
@@ -51,6 +55,19 @@ def _read(path, default=''):
 
 def _load_json(path):
     with open(path, encoding='utf-8') as fh: return json.load(fh)
+
+def _note(notes, msg):
+    if msg not in notes: notes.append(msg)
+
+def _hints(wd, notes):
+    try: h = json.loads(_read(os.path.join(wd, 'hints.json'), '{}'))
+    except ValueError: h = None
+    kws = h.get('keywords', []) if isinstance(h, dict) else None
+    if not isinstance(kws, list):
+        _note(notes, 'hints.json ignored (not an object with a keywords list)'); return []
+    good = [k.strip() for k in kws if isinstance(k, str) and k.strip()]
+    if len(good) != len(kws): _note(notes, 'hints.json: non-string or empty keywords ignored')
+    return good
 
 def _app(wd):
     badge = _read(os.path.join(wd, 'manifest_badging.txt'))
@@ -61,89 +78,119 @@ def _app(wd):
             'engine': (eng.split('\n')[0].strip() or 'unknown'), 'backend': 'IL2CPP' if 'IL2CPP' in eng else 'Mono/other',
             'native_libs': libs}
 
-def _asset_overview(dump):
+def _count_into(dst, src):
+    for c, n in src.items():
+        if isinstance(n, int) and not isinstance(n, bool): dst[c] = dst.get(c, 0) + n
+
+def _asset_overview(dump, notes):
     out = {'bundles': 0, 'object_types': {}, 'script_classes': {}}
     for f in glob.glob(os.path.join(dump, '**', 'bundle_summary.json'), recursive=True):
-        for v in _load_json(f).values():
+        try: summary = _load_json(f)
+        except Exception: summary = None
+        if not isinstance(summary, dict): _note(notes, 'skipped unreadable bundle_summary.json'); continue
+        for v in summary.values():
+            if not isinstance(v, dict): _note(notes, 'skipped malformed bundle_summary entries'); continue
             if 'script_classes' in v:
-                for c, n in v['script_classes'].items(): out['script_classes'][c] = out['script_classes'].get(c, 0) + n
+                if isinstance(v['script_classes'], dict): _count_into(out['script_classes'], v['script_classes'])
             else:
                 out['bundles'] += 1
-                for c, n in v.get('types', {}).items(): out['object_types'][c] = out['object_types'].get(c, 0) + n
+                if isinstance(v.get('types'), dict): _count_into(out['object_types'], v['types'])
     out['script_classes'] = dict(sorted(out['script_classes'].items(), key=lambda kv: -kv[1])[:40])
     out['object_types'] = dict(sorted(out['object_types'].items(), key=lambda kv: -kv[1])[:40])
     return out
 
 def _odin_strings(byte_list):
+    # best-effort key-name candidates: identifier-shaped runs only, never anything secret-looking
+    if not isinstance(byte_list, list): return []
     raw = bytes(b & 255 for b in byte_list)
     out = []
     for m in re.finditer(rb'(?:[\x20-\x7e]\x00){4,}', raw):
         s = m.group().decode('utf-16le')
-        if s not in out: out.append(s)
+        if ODIN_KEY.match(s) and ODIN_SHAPE.search(s) and not SECRETISH.search(s) and s not in out: out.append(s)
     return out[:300]
 
 def _secret_keys(node, rel, out):
     if isinstance(node, dict):
         for k, v in node.items():
-            if isinstance(v, str) and v == '<REDACTED>' and re.search(redact.KEY, k, re.I):
+            if isinstance(v, str) and len(v) >= 4 and re.search(redact.KEY, k, re.I):
                 if {'file': rel, 'key': k} not in out: out.append({'file': rel, 'key': k})
             else: _secret_keys(v, rel, out)
     elif isinstance(node, list):
         for v in node: _secret_keys(v, rel, out)
 
-def _scan_assets(dump):
+def _scan_assets(dump, notes):
     config, odin, secrets = [], [], []
     for f in sorted(glob.glob(os.path.join(dump, '**', '*.json'), recursive=True)):
         if os.path.basename(f) == 'bundle_summary.json': continue
-        try: d = _load_json(f)
-        except Exception: continue
-        rel = os.path.relpath(f, dump); _secret_keys(d, rel, secrets)
-        sd = d.get('serializationData') if isinstance(d, dict) else None
-        if isinstance(sd, dict) and sd.get('SerializedBytes'):
-            odin.append({'asset': rel, 'strings': _odin_strings(sd['SerializedBytes'])}); continue
-        s = json.dumps(d, separators=(',', ':'))
-        if CONFIGY.search(os.path.basename(f)) and len(re.findall(r'[:\[,]-?\d+\.?\d*', s)) > 5:
-            config.append({'asset': rel, 'json': s[:8000]})
+        try:
+            if os.path.getsize(f) > MAX_JSON: _note(notes, 'skipped assets_dump JSON files larger than 20 MB'); continue
+            d = _load_json(f)
+        except Exception: _note(notes, 'skipped unreadable assets_dump JSON files'); continue
+        rel = os.path.relpath(f, dump)
+        try:
+            _secret_keys(d, rel, secrets)
+            sd = d.get('serializationData') if isinstance(d, dict) else None
+            if isinstance(sd, dict) and sd.get('SerializedBytes'):
+                odin.append({'asset': rel, 'strings': _odin_strings(sd['SerializedBytes'])}); continue
+            # redact BEFORE truncating: a cut must never leave half a secret
+            txt = redact.redact_text(json.dumps(redact.redact_obj(d), separators=(',', ':')))
+            if CONFIGY.search(os.path.basename(f)) and len(re.findall(r'[:\[,]-?\d+\.?\d*', txt)) > 5:
+                config.append({'asset': rel, 'json': txt[:8000]})
+        except Exception: _note(notes, 'skipped assets that could not be parsed')
     return config[:12], odin[:12], secrets
 
-def _ui_strings(path, cap=300):
+def _ui_strings(path, notes, cap=300):
     if not os.path.exists(path): return []
-    seen = {s['value'] for s in _load_json(path)
-            if re.fullmatch(r"[A-Za-z][A-Za-z0-9 ,.!?':+-]{5,60}", s['value']) and ' ' in s['value']}
-    return sorted(seen, key=lambda s: (len(s), s))[:cap]
+    try: lits = _load_json(path)
+    except Exception: _note(notes, 'skipped unreadable stringliteral.json'); return []
+    vals = {s['value'] for s in lits if isinstance(s, dict) and isinstance(s.get('value'), str)} if isinstance(lits, list) else set()
+    seen = {redact.redact_text(v) for v in vals
+            if re.fullmatch(r"[A-Za-z][A-Za-z0-9 ,.!?':+-]{5,60}", v) and ' ' in v
+            and not SECRETISH.search(v) and not re.search('debug', v, re.I)}
+    return sorted(seen, key=lambda v: (len(v), v))[:cap]
 
 def _fit(spec, limit):
-    size = lambda: len(json.dumps(spec, separators=(',', ':')))
-    if size() <= limit: return
-    spec['coverage']['trimmed'] = True
-    for n in (15, 5, 0):                       # shrink every class first, keep all of them while possible
-        for c in spec['classes']: c['fields'], c['methods'] = c['fields'][:n], c['methods'][:n]
-        if size() <= limit: return
-    spec['config'] = []; spec['strings'] = spec['strings'][:50]
-    if size() > limit: spec['classes'] = spec['classes'][:100]
+    cov = spec['coverage']
+    size = lambda: len(json.dumps(spec, indent=1))      # same serialisation as the written spec.json
+    cov.update(bytes=limit, over_limit=False, classes_kept=len(spec['classes']))    # placeholders: count their bytes
+    def done():
+        cov['classes_kept'] = len(spec['classes'])
+        for _ in range(5):                               # bytes/over_limit are inside the measured text: settle on a fixed point
+            n = size(); cov.update(bytes=n, over_limit=n > limit)
+            if size() == n: break
+    if size() > limit:
+        cov['trimmed'] = True
+        for n in (15, 5, 0):                             # shrink every class first, keep all of them while possible
+            for c in spec['classes']: c['fields'], c['methods'] = c['fields'][:n], c['methods'][:n]
+            if size() <= limit: return done()
+        spec['config'] = []; spec['strings'] = spec['strings'][:50]
+        if size() > limit: spec['classes'] = spec['classes'][:100]
+    done()
 
 def distill(wd, limit=100_000):
-    hints = json.loads(_read(os.path.join(wd, 'hints.json'), '{}'))
-    rx = re.compile('|'.join([GAMEPLAY] + [re.escape(k) for k in hints.get('keywords', [])]), re.I)
+    notes = ['config values inside Odin-serialised assets are not decoded; only key names are listed (config_odin)',
+             'odin strings are best-effort key-name candidates and may include values',
+             'levels is an asset overview, not per-level layouts']
+    rx = re.compile('|'.join([GAMEPLAY] + [re.escape(k) for k in _hints(wd, notes)]), re.I)
     types = parse_dump(os.path.join(wd, 'il2cpp', 'dump.cs'))
     picked = [t for t in types if rx.search(t['name'])]
     classes = [t for t in picked if t['kind'] != 'enum']
-    config, odin, secrets = _scan_assets(os.path.join(wd, 'assets_dump'))
+    dump = os.path.join(wd, 'assets_dump')
+    config, odin, secrets = _scan_assets(dump, notes)
+    consts = {t['name']: {k: v for k, v in t['consts'].items() if not v.startswith('"')} for t in classes}   # no string literals
     spec = {
         'app': _app(wd),
         'enums': {t['name']: t['members'] for t in picked if t['kind'] == 'enum'},
-        'constants': {t['name']: t['consts'] for t in classes if t['consts']},
+        'constants': {n: c for n, c in consts.items() if c},
         'config': config, 'config_odin': odin,
         'classes': [{'name': t['name'], 'namespace': t['namespace'], 'kind': t['kind'],
                      'fields': t['fields'][:60], 'methods': t['methods'][:80]} for t in classes],
-        'levels': _asset_overview(os.path.join(wd, 'assets_dump')),
-        'strings': _ui_strings(os.path.join(wd, 'il2cpp', 'stringliteral.json')),
+        'levels': _asset_overview(dump, notes),
+        'strings': _ui_strings(os.path.join(wd, 'il2cpp', 'stringliteral.json'), notes),
         'screens': [t['name'] for t in types if SCREEN.search(t['name'])],
         'secrets': secrets,
         'coverage': {'types_total': len(types), 'classes': len(classes), 'enums': len(picked) - len(classes),
-                     'config_assets': len(config), 'odin_assets': len(odin), 'trimmed': False,
-                     'notes': ['config values inside Odin-serialised assets are not decoded; only key names are listed (config_odin)',
-                               'levels is an asset overview, not per-level layouts']},
+                     'config_assets': len(config), 'odin_assets': len(odin), 'trimmed': False, 'notes': notes},
     }
     spec = redact.redact_obj(spec)
     _fit(spec, limit); validate(spec)
