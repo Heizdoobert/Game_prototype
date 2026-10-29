@@ -1,4 +1,4 @@
-import json, os, shutil, tempfile, unittest
+import json, os, re, shutil, tempfile, time, unittest
 from apk2proto import distill
 from apk2proto.schema import validate
 
@@ -176,14 +176,23 @@ class DistillTests(unittest.TestCase):
 
     def test_odin_keeps_keys_drops_values(self):
         d = self.workdir()
-        raw = ['featureUnlock/', 'odinval9999secret', 'deadbeef12345678']
+        raw = ['featureUnlock/', 'odinval9999secret', 'deadbeef12345678', 'authToken_x']
         bytes_ = [b for r in raw for b in list(r.encode('utf-16le')) + [0, 0]]
         write(d, 'assets_dump/player/data__Odin__x__3.json', json.dumps({'serializationData': {'SerializedBytes': bytes_}}))
         spec = distill.distill(d)
         strings = [o for o in spec['config_odin'] if o['asset'].endswith('data__Odin__x__3.json')][0]['strings']
         self.assertEqual(strings, ['featureUnlock/'])
         text = self.spec_text(d)
-        self.assertNotIn('odinval9999secret', text); self.assertNotIn('deadbeef12345678', text)
+        self.assertNotIn('odinval9999secret', text); self.assertNotIn('deadbeef12345678', text); self.assertNotIn('authToken_x', text)
+
+    def test_huge_config_string_is_bounded_and_fast(self):
+        d = self.workdir()
+        write(d, 'assets_dump/mono/GameSettings_2.json', json.dumps(
+            {'a': 'a' * 100 + '"' + 'a' * 199_900, 'b': 'c' * 200_000, 'n': [1, 2, 3, 4, 5, 6, 7]}))
+        t0 = time.monotonic(); spec = distill.distill(d); elapsed = time.monotonic() - t0
+        self.assertLess(elapsed, 5)
+        self.assertIn('mono/GameSettings_2.json', [c['asset'] for c in spec['config']])
+        self.assertIsNone(re.search(r'(.)\1{2000}', self.spec_text(d)))
 
     def test_odin_non_list_bytes_do_not_crash(self):
         d = self.workdir()

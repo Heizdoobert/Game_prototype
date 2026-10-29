@@ -44,7 +44,7 @@ def parse_dump(path):
 GAMEPLAY = r'board|level|piece|slot|booster|score|turn|match|tile|grid|wave|box|jar|tray|win|lose|revive|heart|coin|combo|move|goal|target|spawn|color'
 SCREEN = re.compile(r'(popup|panel|screen|dialog|window)$', re.I)
 CONFIGY = re.compile(r'config|setting|profile|data|table|rate', re.I)
-SECRETISH = re.compile(r'password|passwd|secret|token|api[_ -]?key|private|auth|credential|cheat', re.I)
+SECRETISH = re.compile(redact.KEY + r'|cheat|debug', re.I)
 ODIN_KEY = re.compile(r'^[A-Za-z_][A-Za-z0-9_./-]{3,39}$')
 ODIN_SHAPE = re.compile(r'[a-z][A-Z]|[_/.]')
 MAX_JSON = 20_000_000
@@ -55,6 +55,16 @@ def _read(path, default=''):
 
 def _load_json(path):
     with open(path, encoding='utf-8') as fh: return json.load(fh)
+
+def _big(path, notes):
+    if os.path.getsize(path) <= MAX_JSON: return False
+    _note(notes, 'skipped JSON files larger than 20 MB'); return True
+
+def _clip(node, n=2000):
+    # bound every string/key so the kit's quadratic regex only ever sees short input
+    if isinstance(node, dict): return {(k[:n] if isinstance(k, str) else k): _clip(v, n) for k, v in node.items()}
+    if isinstance(node, list): return [_clip(v, n) for v in node]
+    return node[:n] if isinstance(node, str) else node
 
 def _note(notes, msg):
     if msg not in notes: notes.append(msg)
@@ -85,6 +95,7 @@ def _count_into(dst, src):
 def _asset_overview(dump, notes):
     out = {'bundles': 0, 'object_types': {}, 'script_classes': {}}
     for f in glob.glob(os.path.join(dump, '**', 'bundle_summary.json'), recursive=True):
+        if _big(f, notes): continue
         try: summary = _load_json(f)
         except Exception: summary = None
         if not isinstance(summary, dict): _note(notes, 'skipped unreadable bundle_summary.json'); continue
@@ -123,7 +134,7 @@ def _scan_assets(dump, notes):
     for f in sorted(glob.glob(os.path.join(dump, '**', '*.json'), recursive=True)):
         if os.path.basename(f) == 'bundle_summary.json': continue
         try:
-            if os.path.getsize(f) > MAX_JSON: _note(notes, 'skipped assets_dump JSON files larger than 20 MB'); continue
+            if _big(f, notes): continue
             d = _load_json(f)
         except Exception: _note(notes, 'skipped unreadable assets_dump JSON files'); continue
         rel = os.path.relpath(f, dump)
@@ -132,21 +143,23 @@ def _scan_assets(dump, notes):
             sd = d.get('serializationData') if isinstance(d, dict) else None
             if isinstance(sd, dict) and sd.get('SerializedBytes'):
                 odin.append({'asset': rel, 'strings': _odin_strings(sd['SerializedBytes'])}); continue
-            # redact BEFORE truncating: a cut must never leave half a secret
-            txt = redact.redact_text(json.dumps(redact.redact_obj(d), separators=(',', ':')))
-            if CONFIGY.search(os.path.basename(f)) and len(re.findall(r'[:\[,]-?\d+\.?\d*', txt)) > 5:
-                config.append({'asset': rel, 'json': txt[:8000]})
+            if not CONFIGY.search(os.path.basename(f)): continue
+            d = _clip(d)
+            if len(re.findall(r'[:\[,]-?\d+\.?\d*', json.dumps(d, separators=(',', ':')))) > 5:
+                # secret-named values are masked whole by redact_obj BEFORE the 8000 cut, so a cut never leaves half a secret
+                config.append({'asset': rel, 'json': json.dumps(redact.redact_obj(d), separators=(',', ':'))[:8000]})
         except Exception: _note(notes, 'skipped assets that could not be parsed')
     return config[:12], odin[:12], secrets
 
 def _ui_strings(path, notes, cap=300):
     if not os.path.exists(path): return []
+    if _big(path, notes): return []
     try: lits = _load_json(path)
     except Exception: _note(notes, 'skipped unreadable stringliteral.json'); return []
     vals = {s['value'] for s in lits if isinstance(s, dict) and isinstance(s.get('value'), str)} if isinstance(lits, list) else set()
     seen = {redact.redact_text(v) for v in vals
             if re.fullmatch(r"[A-Za-z][A-Za-z0-9 ,.!?':+-]{5,60}", v) and ' ' in v
-            and not SECRETISH.search(v) and not re.search('debug', v, re.I)}
+            and not SECRETISH.search(v)}
     return sorted(seen, key=lambda v: (len(v), v))[:cap]
 
 def _fit(spec, limit):
