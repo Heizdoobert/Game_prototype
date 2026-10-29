@@ -101,7 +101,7 @@ def build_workdir():
     d = tempfile.mkdtemp()
     write(d, 'il2cpp/dump.cs', DUMP)
     write(d, 'manifest_badging.txt', "package: name='com.x.y' versionCode='7' versionName='1.2'\n")
-    write(d, 'engine.txt', 'Unity\nIL2CPP -> use bin/il2cpp_dump.sh\n')
+    write(d, 'engine.txt', 'Unity\nIL2CPP -> use bin/il2cpp_dump.sh (+ unity_dump.py, ghidra_decomp.sh)\n')
     write(d, 'assets_dump/player/bundle_summary.json',
           json.dumps({'data.unity3d': {'script_classes': {'Image': 5, 'Button': 2}}}))
     odin = list('featureUnlock'.encode('utf-16le'))
@@ -134,6 +134,11 @@ class DistillTests(unittest.TestCase):
         d = self.workdir(); distill.distill(d)
         with open(os.path.join(d, 'spec_index.md')) as fh: text = fh.read()
         self.assertIn('il2cpp/dump.cs', text); self.assertNotIn('fn.py', text); self.assertNotIn('xref.py', text)
+
+    def test_backend_label_uses_line_prefix(self):
+        d = self.workdir(); self.assertEqual(distill.distill(d)['app']['backend'], 'IL2CPP')
+        write(d, 'engine.txt', 'Unity\nMono: Assembly-CSharp.dll present -> decompile with ilspycmd/dnSpy (no IL2CPP step)\n')
+        self.assertEqual(distill.distill(d)['app']['backend'], 'Mono/other')
 
     def test_hints_widen_class_filter(self):
         d = self.workdir(); write(d, 'hints.json', json.dumps({'keywords': ['Popup']}))

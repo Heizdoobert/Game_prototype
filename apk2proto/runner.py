@@ -1,6 +1,7 @@
 import argparse, json, os, subprocess
 from collections import namedtuple
 from . import distill as D, doctor as DR, paths, scaffold as S, verify as V
+from .textutil import is_il2cpp
 from .state import Workdir, fingerprint
 
 Stage = namedtuple('Stage', 'name fn key exists')
@@ -33,7 +34,7 @@ def _engine(path):
     try:
         with open(path) as fh: text = fh.read()
     except OSError: return '', False
-    return text.split('\n')[0].strip(), 'IL2CPP' in text
+    return text.split('\n')[0].strip(), is_il2cpp(text)
 
 def _check_engine(engine_txt):
     first, il2cpp = _engine(engine_txt)

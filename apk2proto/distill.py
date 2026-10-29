@@ -1,7 +1,7 @@
 import functools, glob, json, os, re
 from . import paths
 from .schema import validate
-from .textutil import clip
+from .textutil import clip, is_il2cpp
 
 HDR = re.compile(r'^(?:public |internal |private |protected )?(?:static |abstract |sealed )*'
                  r'(class|struct|enum|interface) (.+?)(?: : [^/]*?)? // TypeDefIndex: (\d+)')
@@ -81,7 +81,7 @@ def _app(wd):
     eng = _read(os.path.join(wd, 'engine.txt'))
     libs = sorted({os.path.basename(p)[3:-3] for p in glob.glob(os.path.join(wd, 'apk', 'lib', '*', 'lib*.so'))})
     return {'package': pkg[1] if pkg else '', 'version': ver[1] if ver else '',
-            'engine': (eng.split('\n')[0].strip() or 'unknown'), 'backend': 'IL2CPP' if 'IL2CPP' in eng else 'Mono/other',
+            'engine': (eng.split('\n')[0].strip() or 'unknown'), 'backend': 'IL2CPP' if is_il2cpp(eng) else 'Mono/other',
             'native_libs': libs}
 
 def _count_into(dst, src):
