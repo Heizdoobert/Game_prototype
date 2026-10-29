@@ -197,8 +197,52 @@ class DistillTests(unittest.TestCase):
 
     def test_masker_covers_numbers_and_lists_under_secret_keys(self):
         out = distill._mask({'debugPin': 12345678, 'saltList': ['a', 'bbbbb'], 'n': 5, 'nested': [{'licenseKey': 'FAKE-lic-1'}], 'on': True})
-        self.assertEqual(out, {'debugPin': '<REDACTED>', 'saltList': '<REDACTED>', 'n': 5,
+        self.assertEqual(out, {'debugPin': '<REDACTED>', 'saltList': ['<REDACTED>', '<REDACTED>'], 'n': 5,
                                'nested': [{'licenseKey': '<REDACTED>'}], 'on': True})
+
+    def all_text(self, d):
+        with open(os.path.join(d, 'spec.json')) as fh: a = fh.read()
+        with open(os.path.join(d, 'spec_index.md')) as fh: return a + fh.read()
+
+    def test_dict_and_list_under_secret_key_masked_and_listed(self):
+        d = self.workdir()
+        write(d, 'assets_dump/mono/data__Ads__x.json', json.dumps(
+            {'sdkKeys': {'android': 'FAKEdict-android-1', 'ios': ['FAKEdict-ios-2']}, 'price': [1, 2, 3, 4, 5, 6], 'on': True}))
+        spec = distill.distill(d); text = self.all_text(d)
+        for v in ('FAKEdict-android-1', 'FAKEdict-ios-2'): self.assertNotIn(v, text)
+        self.assertIn({'file': 'mono/data__Ads__x.json', 'key': 'sdkKeys'}, spec['secrets'])
+        self.assertEqual(json.loads(spec['config'][-1]['json'])['sdkKeys'], {'android': '<REDACTED>', 'ios': ['<REDACTED>']})
+
+    def test_same_value_under_harmless_key_and_strings_scrubbed_everywhere(self):
+        d = self.workdir(); v = 'Fake secret phrase 42'
+        write(d, 'assets_dump/mono/data__Keys__x.json', json.dumps({'PassCheat': v, 'label': v, 'price': [1, 2, 3, 4, 5, 6]}))
+        write(d, 'assets_dump/mono/data__Other__y.json', json.dumps({'note': 'see ' + v + ' ok', 'n': [1, 2, 3, 4, 5, 6]}))    # another asset, no secret key
+        write(d, 'il2cpp/stringliteral.json', json.dumps([{'value': v}, {'value': 'Hello brave world'}]))
+        spec = distill.distill(d)
+        self.assertNotIn(v, self.all_text(d))
+        self.assertIn('Hello brave world', spec['strings'])
+        cfg = {c['asset']: json.loads(c['json']) for c in spec['config']}
+        self.assertEqual(cfg['mono/data__Keys__x.json']['label'], '<REDACTED>')
+        self.assertEqual(cfg['mono/data__Other__y.json']['note'], 'see <REDACTED> ok')
+        self.assertIn({'file': 'mono/data__Keys__x.json', 'key': 'PassCheat'}, spec['secrets'])
+        self.assertNotIn('label', [e['key'] for e in spec['secrets']])
+
+    def test_key_value_pair_shapes_masked_and_listed(self):
+        d = self.workdir()
+        write(d, 'assets_dump/mono/data__Pairs__x.json', json.dumps({
+            'entries': [{'key': 'PassCheat', 'value': 'FAKEpair-val-1'}, {'Name': 'sdkKey', 'Value': ['FAKEpair-val-2']},
+                        {'key': 'volume', 'value': 'FAKEplain-val-3'}], 'n': [1, 2, 3, 4, 5, 6]}))
+        spec = distill.distill(d); text = self.all_text(d)
+        for v in ('FAKEpair-val-1', 'FAKEpair-val-2'): self.assertNotIn(v, text)
+        self.assertIn('FAKEplain-val-3', text)                                     # non-secret name: untouched
+        for k in ('PassCheat', 'sdkKey'): self.assertIn({'file': 'mono/data__Pairs__x.json', 'key': k}, spec['secrets'])
+        self.assertNotIn('volume', [e['key'] for e in spec['secrets']])
+
+    def test_flag_values_are_not_scrubbed_from_the_spec(self):
+        d = self.workdir()
+        write(d, 'assets_dump/mono/data__Flags__x.json', json.dumps({'passType': 'true', 'passMode': 'full', 'mode': 'true full', 'n': [1, 2, 3, 4, 5, 6]}))
+        spec = distill.distill(d)
+        self.assertEqual(json.loads([c for c in spec['config'] if 'Flags' in c['asset']][0]['json'])['mode'], 'true full')
 
     def test_odin_keeps_keys_drops_values(self):
         d = self.workdir()

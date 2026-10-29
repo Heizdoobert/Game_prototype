@@ -1,7 +1,7 @@
 import functools, glob, json, os, re
 from . import paths
 from .schema import validate
-from .textutil import clip, is_il2cpp
+from .textutil import NAME_KEYS, VALUE_KEYS, clip, is_il2cpp, secret_pairs, secret_value
 
 HDR = re.compile(r'^(?:public |internal |private |protected )?(?:static |abstract |sealed )*'
                  r'(class|struct|enum|interface) (.+?)(?: : [^/]*?)? // TypeDefIndex: (\d+)')
@@ -116,25 +116,54 @@ def _odin_strings(byte_list):
         if ODIN_KEY.match(s) and ODIN_SHAPE.search(s) and not secret_key().search(s) and s not in out: out.append(s)
     return out[:300]
 
-def _secret_keys(node, rel, out):
-    if isinstance(node, dict):
-        for k, v in node.items():
-            if isinstance(v, str) and len(v) >= 4 and secret_key().search(k):
-                if {'file': rel, 'key': k} not in out: out.append({'file': rel, 'key': k})
-            else: _secret_keys(v, rel, out)
-    elif isinstance(node, list):
-        for v in node: _secret_keys(v, rel, out)
+PER_KEY, MAX_VALUES, RED = 50, 500, '<REDACTED>'
+
+def _collect_secrets(dump, notes):
+    """pass 1 over every asset: ([{file,key}], eligible secret VALUES). Values never leave this module except to be scrubbed."""
+    secrets, per, vals = [], {}, {}
+    for f in sorted(glob.glob(os.path.join(dump, '**', '*.json'), recursive=True)):
+        if os.path.basename(f) == 'bundle_summary.json': continue
+        try:
+            if _big(f, notes): continue
+            d = _load_json(f)
+        except Exception: continue                       # pass 2 notes unreadable files
+        rel = os.path.relpath(f, dump)
+        try:
+            for name, leaf in secret_pairs(d, secret_key().search):
+                if (isinstance(leaf, str) and len(leaf) >= 4) or secret_value(leaf) is not None:
+                    if {'file': rel, 'key': name} not in secrets: secrets.append({'file': rel, 'key': name})
+                v = secret_value(leaf)
+                if v is not None and per.get((rel, name), 0) < PER_KEY and len(vals) < MAX_VALUES:
+                    per[(rel, name)] = per.get((rel, name), 0) + 1; vals[v[:2000]] = 1   # strings are clipped to 2000 before scrubbing
+        except RecursionError: continue
+    # ponytail: at most 500 values (50 per key) are scrubbed from the spec; verify's own cross-check catches the rest
+    return secrets, sorted(vals, key=lambda v: -len(v))
+
+def _scrub(node, vals):
+    """replace every exact occurrence of a secret value inside any string leaf"""
+    if isinstance(node, dict): return {k: _scrub(v, vals) for k, v in node.items()}
+    if isinstance(node, list): return [_scrub(v, vals) for v in node]
+    if isinstance(node, str):
+        for v in vals:
+            if v in node: node = node.replace(v, RED)
+    return node
 
 def _mask(node):
-    # whole-value mask for any key the game-wide heuristic calls secret (kit redact_obj only knows its own narrow KEY)
+    # kit redact_obj only knows its own narrow KEY: mask every leaf under any key this game family calls secret,
+    # and the 'value' leaves of {'key'|'name': <secret name>, 'value': ...} pairs
     if isinstance(node, dict):
-        return {k: ('<REDACTED>' if isinstance(k, str) and secret_key().search(k) and isinstance(v, (str, int, float, list)) and not isinstance(v, bool)
-                    else _mask(v)) for k, v in node.items()}
+        pair = any(isinstance(node.get(k), str) and secret_key().search(node[k]) for k in NAME_KEYS)
+        return {k: (_mask_all(v) if (isinstance(k, str) and secret_key().search(k)) or (pair and k in VALUE_KEYS) else _mask(v)) for k, v in node.items()}
     if isinstance(node, list): return [_mask(v) for v in node]
     return node
 
-def _scan_assets(dump, notes):
-    config, odin, secrets = [], [], []
+def _mask_all(node):
+    if isinstance(node, dict): return {k: _mask_all(v) for k, v in node.items()}
+    if isinstance(node, list): return [_mask_all(v) for v in node]
+    return node if isinstance(node, bool) or node is None else RED
+
+def _scan_assets(dump, notes, vals):
+    config, odin = [], []
     for f in sorted(glob.glob(os.path.join(dump, '**', '*.json'), recursive=True)):
         if os.path.basename(f) == 'bundle_summary.json': continue
         try:
@@ -143,17 +172,16 @@ def _scan_assets(dump, notes):
         except Exception: _note(notes, 'skipped unreadable assets_dump JSON files'); continue
         rel = os.path.relpath(f, dump)
         try:
-            _secret_keys(d, rel, secrets)
             sd = d.get('serializationData') if isinstance(d, dict) else None
             if isinstance(sd, dict) and sd.get('SerializedBytes'):
-                odin.append({'asset': rel, 'strings': _odin_strings(sd['SerializedBytes'])}); continue
+                odin.append({'asset': rel, 'strings': _scrub(_odin_strings(sd['SerializedBytes']), vals)}); continue
             if not CONFIGY.search(os.path.basename(f)): continue
             d = clip(d, 2000)            # bound every string/key so the kit's quadratic regex only ever sees short input
             if len(re.findall(r'[:\[,]-?\d+\.?\d*', json.dumps(d, separators=(',', ':')))) > 5:
-                # secret-named values are masked whole by redact_obj BEFORE the 8000 cut, so a cut never leaves half a secret
-                config.append({'asset': rel, 'json': json.dumps(paths.redact().redact_obj(_mask(d)), separators=(',', ':'))[:8000]})
+                # masked and scrubbed BEFORE the 8000 cut, so a cut never leaves half a secret
+                config.append({'asset': rel, 'json': json.dumps(paths.redact().redact_obj(_scrub(_mask(d), vals)), separators=(',', ':'))[:8000]})
         except Exception: _note(notes, 'skipped assets that could not be parsed')
-    return config[:12], odin[:12], secrets
+    return config[:12], odin[:12]
 
 def _ui_strings(path, notes, cap=300):
     if not os.path.exists(path): return []
@@ -193,7 +221,8 @@ def distill(wd, limit=100_000):
     picked = [t for t in types if rx.search(t['name'])]
     classes = [t for t in picked if t['kind'] != 'enum']
     dump = os.path.join(wd, 'assets_dump')
-    config, odin, secrets = _scan_assets(dump, notes)
+    secrets, vals = _collect_secrets(dump, notes)
+    config, odin = _scan_assets(dump, notes, vals)
     consts = {t['name']: {k: v for k, v in t['consts'].items() if not v.startswith('"')} for t in classes}   # no string literals
     spec = {
         'app': _app(wd),
@@ -210,6 +239,7 @@ def distill(wd, limit=100_000):
                      'config_assets': len(config), 'odin_assets': len(odin), 'trimmed': False, 'notes': notes},
     }
     spec = paths.redact().redact_obj(spec)
+    spec = {k: (v if k == 'secrets' else _scrub(v, vals)) for k, v in spec.items()}     # same value under a harmless key, in strings, anywhere
     _fit(spec, limit); validate(spec)
     with open(os.path.join(wd, 'spec.json'), 'w', encoding='utf-8') as fh: json.dump(spec, fh, indent=1)
     with open(os.path.join(wd, 'spec_index.md'), 'w', encoding='utf-8') as fh:
