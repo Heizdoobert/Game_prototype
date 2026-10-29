@@ -126,13 +126,27 @@ class DetectDumpTests(unittest.TestCase):
         self.assertFalse(self.detect.exists(self.wd)); self.engine('Unity\n', apk=False); self.assertFalse(self.detect.exists(self.wd))
 
     def test_dump_without_dump_cs_fails(self):
-        with mock.patch.object(runner, 'sh'), self.assertRaises(SystemExit) as cm: runner.st_dump(self.wd, args(self.d))
+        with mock.patch.object(runner, 'sh'), mock.patch.object(runner, '_need'), self.assertRaises(SystemExit) as cm: runner.st_dump(self.wd, args(self.d))
         self.assertIn('il2cpp/dump.cs', str(cm.exception))
 
     def test_dump_with_dump_cs_ok(self):
         os.makedirs(self.wd.p('il2cpp'))
         with open(self.wd.p('il2cpp', 'dump.cs'), 'w') as fh: fh.write('x')
-        with mock.patch.object(runner, 'sh'): runner.st_dump(self.wd, args(self.d))
+        with mock.patch.object(runner, 'sh'), mock.patch.object(runner, '_need'): runner.st_dump(self.wd, args(self.d))
+
+class KitCheckTests(unittest.TestCase):
+    def test_detect_and_dump_refuse_without_kit(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        wd = runner.Workdir(d)
+        bad = [(False, 'game_re_kit found', 'set GRE_KIT')]
+        for fn in (runner.st_detect, runner.st_dump):
+            with mock.patch.object(DR, 'checks', return_value=bad), mock.patch.object(runner, 'sh') as sh:
+                with self.assertRaises(SystemExit) as cm: fn(wd, args(d))
+            self.assertIn('MISS game_re_kit found -> set GRE_KIT', str(cm.exception)); sh.assert_not_called()
+
+    def test_check_name_sets_exist_in_doctor(self):
+        names = {n for _, n, _ in DR.checks()}
+        self.assertTrue(set(runner.DUMP_CHECKS) <= names); self.assertIn('Unity Android module', runner.BUILD_CHECKS)
 
 class KeyTests(unittest.TestCase):
     def setUp(self):

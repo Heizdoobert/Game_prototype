@@ -1,5 +1,5 @@
 import json, os, re, shutil, tempfile, time, unittest
-from apk2proto import distill
+from apk2proto import distill, paths
 from apk2proto.schema import validate
 
 DUMP = '''// Image 0: Assembly-CSharp.dll - 0

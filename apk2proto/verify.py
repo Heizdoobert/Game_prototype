@@ -1,7 +1,5 @@
-import hashlib, json, os, re, sys
+import hashlib, json, os, re
 from . import paths
-sys.path.insert(0, os.path.join(paths.KIT, 'bin'))
-import redact                                   # kit module: secret detection
 
 SKIP = {'Library', 'Temp', 'obj', 'bin', 'Builds', 'Logs', '.git', 'UserSettings'}
 MIN = 64                    # smaller files (stubs, tiny metas) legitimately coincide
@@ -36,7 +34,7 @@ def _leak_line(path):
         for n, line in enumerate(f, 1):
             line = line[:LINE]
             if BLOB.search(line): continue
-            if redact.redact_text(line) != line: return n
+            if paths.redact().redact_text(line) != line: return n
     return 0
 
 MAX_VALUES, MAX_VALUE_LEN, MAX_DUMP = 200, 200, 20_000_000
@@ -105,7 +103,7 @@ def verify(project, apk_dir, spec_path=None, assets_dump=None, extra_text_files=
             if _has_big_key(spec): problems.append('spec.json has an oversized key')
             else:
                 spec = _clip(spec)
-                if redact.redact_obj(spec) != spec: problems.append('possible secret in spec.json')
+                if paths.redact().redact_obj(spec) != spec: problems.append('possible secret in spec.json')
         except (OSError, ValueError, RecursionError): problems.append('spec.json unreadable')
         values = _secret_values(spec_path, assets_dump) if assets_dump else []
         if values:

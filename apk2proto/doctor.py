@@ -39,7 +39,12 @@ def checks():
     add('dotnet', shutil.which('dotnet'), 'install dotnet 8')
     add('unzip', shutil.which('unzip'), 'install unzip')
     add('adb', shutil.which('adb'), 'install adb (needed for the install stage)')
-    add('Unity Editor + Android module', paths.unity_editor(), 'install Unity 6000.6.7f1 with Android Build Support via Unity Hub')
+    ed = paths.unity_editor()
+    add('game_re_kit found', all(os.path.isfile(os.path.join(paths.KIT, 'bin', f)) for f in ('unpack.sh', 'run_all.sh', 'redact.py')),
+        'clone game_re_kit and set GRE_KIT to it (detect and dump need it)')
+    add('Unity Editor', ed, 'install Unity 6000.6.7f1 via Unity Hub')
+    add('Unity Android module', ed and os.path.isdir(os.path.join(os.path.dirname(ed), 'Data', 'PlaybackEngines', 'AndroidPlayer')),
+        'add Android Build Support to the Unity install via Unity Hub')
     add('cmdline-tools has only 16.0', real == ['16.0'],
         'move every other cmdline-tools folder away: Unity picks the last folder and cannot parse newer sdkmanager output')
     add('NDK ' + NDK, os.path.isdir(os.path.join(sdk, 'ndk', NDK)), 'sdkmanager "ndk;%s"' % NDK)

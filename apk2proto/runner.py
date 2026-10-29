@@ -8,7 +8,8 @@ Stage = namedtuple('Stage', 'name fn key exists')
 class Paused(Exception): pass
 
 # doctor.checks() names the Unity build needs (adb is only for install)
-BUILD_CHECKS = ('Unity Editor + Android module', 'cmdline-tools has only 16.0', 'NDK ' + DR.NDK, 'JDK 17 (JAVA_HOME or Unity bundled)')
+BUILD_CHECKS = ('Unity Editor', 'Unity Android module', 'cmdline-tools has only 16.0', 'NDK ' + DR.NDK, 'JDK 17 (JAVA_HOME or Unity bundled)')
+DUMP_CHECKS = ('game_re_kit found',)             # detect and dump call the kit
 MIN_MEM_MB = 3500
 
 PAUSE_MSG = '''\
@@ -28,11 +29,17 @@ def _check_engine(engine_txt):
     with open(engine_txt) as fh: first = fh.read().split('\n')[0].strip()
     if first != 'Unity': raise SystemExit('engine %r is not supported yet (other engines are separate specs)' % first)
 
+def _need(names, what):
+    bad = [(n, fix) for ok, n, fix in DR.checks() if not ok and n in names]
+    if bad: raise SystemExit('%s prerequisites missing:\n' % what + '\n'.join('MISS %s -> %s' % b for b in bad))
+
 def st_detect(wd, a):
+    _need(DUMP_CHECKS, 'detect')
     sh([_kit('unpack.sh'), a.apk, wd.path])
     _check_engine(wd.p('engine.txt'))
 
 def st_dump(wd, a):
+    _need(DUMP_CHECKS, 'dump')
     sh([_kit('run_all.sh'), a.apk, wd.path, 'meta dump assets'])
     if not os.path.isfile(wd.p('il2cpp', 'dump.cs')):
         raise SystemExit('dump produced no il2cpp/dump.cs (see the kit output above)')
@@ -60,8 +67,7 @@ def _mem_available_mb():
     return None                                        # unknown (not Linux): do not block
 
 def st_build(wd, a):
-    bad = [(n, fix) for ok, n, fix in DR.checks() if not ok and n in BUILD_CHECKS]   # adb is only for install
-    if bad: raise SystemExit('build prerequisites missing:\n' + '\n'.join('MISS %s -> %s' % b for b in bad))
+    _need(BUILD_CHECKS, 'build')                       # adb is only for install
     mem = _mem_available_mb()
     if mem is not None and mem < MIN_MEM_MB:
         raise SystemExit('refusing to start Unity: MemAvailable %d MB < %d MB (free RAM first)' % (mem, MIN_MEM_MB))

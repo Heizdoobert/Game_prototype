@@ -1,4 +1,4 @@
-import os, shutil, tempfile, unittest
+import contextlib, io, os, shutil, tempfile, unittest
 from unittest import mock
 from apk2proto import doctor
 
@@ -23,6 +23,31 @@ class DoctorTests(unittest.TestCase):
 
     def result(self, name):
         return next(ok for ok, n, _ in doctor.checks() if n == name)
+
+    def test_missing_kit_is_a_miss_not_a_traceback(self):
+        kit = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, kit, ignore_errors=True)
+        out = io.StringIO()
+        with mock.patch.object(doctor.paths, 'KIT', kit), contextlib.redirect_stdout(out):
+            self.assertEqual(doctor.main(), 1)
+        self.assertIn('MISS game_re_kit found', out.getvalue())
+
+    def test_kit_found_needs_all_three_files(self):
+        kit = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, kit, ignore_errors=True)
+        os.makedirs(os.path.join(kit, 'bin'))
+        with mock.patch.object(doctor.paths, 'KIT', kit):
+            for f in ('unpack.sh', 'run_all.sh'):
+                with open(os.path.join(kit, 'bin', f), 'w') as fh: fh.write('')
+            self.assertFalse(self.result('game_re_kit found'))
+            with open(os.path.join(kit, 'bin', 'redact.py'), 'w') as fh: fh.write('')
+            self.assertTrue(self.result('game_re_kit found'))
+
+    def test_unity_android_module(self):
+        root = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        unity = os.path.join(root, 'Editor', 'Unity')
+        with mock.patch.object(doctor.paths, 'unity_editor', return_value=unity):
+            self.assertTrue(self.result('Unity Editor')); self.assertFalse(self.result('Unity Android module'))
+            os.makedirs(os.path.join(root, 'Editor', 'Data', 'PlaybackEngines', 'AndroidPlayer'))
+            self.assertTrue(self.result('Unity Android module'))
 
     def test_cmdline_tools_rule(self):
         ct = os.path.join(self.sdk, 'cmdline-tools'); os.makedirs(os.path.join(ct, '16.0'))
