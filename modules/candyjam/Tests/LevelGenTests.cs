@@ -13,7 +13,9 @@ static class LevelGenTests
         T.Check(LevelGen.DifficultyOf(120) == Difficulty.VeryHard, "level 120 very hard");
         T.Check(LevelGen.DifficultyOf(24) == Difficulty.Hard, "level 24 hard");
 
-        T.Check(LevelGen.TargetColors(1) == 3 && LevelGen.TargetColors(12) == 5 && LevelGen.TargetColors(54) == 12 && LevelGen.TargetColors(300) == Rules.MaxColors, "colour ramp min(12, 3 + n/6)");
+        T.Check(LevelGen.TargetColors(1) == 3 && LevelGen.TargetColors(12) == 5 && LevelGen.TargetColors(54) == 12 && LevelGen.TargetColors(301) == Rules.MaxColors, "Normal colour ramp min(12, 3 + n/6)");
+        T.Check(LevelGen.TargetColors(16) == 5 && LevelGen.TargetColors(56) == 5 && LevelGen.TargetColors(200) == 5, "Hard target capped at 5");
+        T.Check(LevelGen.TargetColors(15) == 4 && LevelGen.TargetColors(60) == 4 && LevelGen.TargetColors(300) == 4, "VeryHard target capped at 4");
 
         var sw = new Stopwatch();
         var colours = "";
@@ -63,16 +65,25 @@ static class LevelGenTests
         T.Check(LevelGen.Generate(1).Candies.Length == 54, "level 1 has 54 candies");
         T.Check(LevelGen.Generate(50).Candies.Length >= 144, "level 50 is big");
 
-        var spot = Stopwatch.StartNew();
+        // past level 60 the phone generates at level start: every sampled level <= 3 s, mean <= 1 s
+        var spot = new Stopwatch();
         var times = "";
-        foreach (int n in new[] { 60, 100, 123, 200 })
+        double total = 0;
+        int[] sample = { 61, 64, 72, 80, 90, 96, 112, 120, 150, 200 };
+        foreach (int n in sample)
         {
-            var t0 = spot.Elapsed.TotalSeconds;
+            spot.Restart();
             var lv = LevelGen.Generate(n);
+            double dt = spot.Elapsed.TotalSeconds;
+            total += dt;
+            T.Check(dt <= 3.0, "level " + n + " generates in " + dt.ToString("F1") + " s (<= 3)");
             T.Check(lv.Candies.Length % 3 == 0, "level " + n + " candy count multiple of 3");
             T.Check(Solver.Solve(lv), "level " + n + " solvable by the bot");
-            times += " L" + n + "=" + (spot.Elapsed.TotalSeconds - t0).ToString("F1") + "s";
+            times += " L" + n + "=" + lv.Colors + "c/" + dt.ToString("F1") + "s";
         }
-        Console.WriteLine("spot checks:" + times);
+        Console.WriteLine("sampled levels:" + times);
+        T.Check(total / sample.Length <= 1.0, "mean generation of sampled levels " + (total / sample.Length).ToString("F2") + " s (<= 1)");
+        foreach (int n in new[] { 100, 123 })
+            T.Check(Solver.Solve(LevelGen.Generate(n)), "level " + n + " solvable by the bot");
     }
 }

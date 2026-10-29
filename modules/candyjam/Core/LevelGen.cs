@@ -12,15 +12,23 @@ namespace CandyJam.Core
             return Difficulty.Normal;
         }
 
-        public static int TargetColors(int n) { return Math.Min(Rules.MaxColors, 3 + n / 6); }
+        // Normal: ramp min(12, 3 + n/6). Hard/VeryHard capped at what the bot reaches on those boards (measured
+        // Hard 4-6 past level 60, VeryHard 3-4), so early attempts pass instead of failing solves at every colour step [tuned]
+        public static int TargetColors(int n)
+        {
+            int ramp = Math.Min(Rules.MaxColors, 3 + n / 6);
+            var d = DifficultyOf(n);
+            return d == Difficulty.VeryHard ? Math.Min(ramp, 4) : d == Difficulty.Hard ? Math.Min(ramp, 5) : ramp;
+        }
 
-        // ponytail: bot-verified rejection sampling; colour count drops every 10 failed attempts (floor 3).
+        // ponytail: bot-verified rejection sampling; colour count drops every 5 failed attempts (floor 3), counted in
+        // attempts, never time, so generation stays deterministic. A failed solve on a big board costs ~0.2 s.
         public static LevelData Generate(int number)
         {
             int colors = TargetColors(number);
             for (int attempt = 0; attempt < 200; attempt++)
             {
-                if (attempt > 0 && attempt % 10 == 0 && colors > 3) colors--;
+                if (attempt > 0 && attempt % 5 == 0 && colors > 3) colors--;
                 var level = Build(number, colors, attempt);
                 if (Solver.Solve(level)) return level;
             }
@@ -58,14 +66,19 @@ namespace CandyJam.Core
             return true;
         }
 
-        // hashed so the style does not line up with the 8/15-level tier cadence
         public static int LayersOf(int n)
         {
             var d = DifficultyOf(n);
             return Math.Min(2 + n / 12 + (d == Difficulty.VeryHard ? 2 : d == Difficulty.Hard ? 1 : 0), 6);
         }
 
-        public static Layout.Style StyleOf(int n) { return (Layout.Style)(((uint)n * 2654435761u >> 16) % 3); }
+        // hashed so the style does not line up with the tier cadence; Hard/VeryHard skip Concentric, the loosest
+        // cover (~19% of candies covered at start vs Banded ~30%, OffsetGrid ~80%), so tiers really are harder [tuned]
+        public static Layout.Style StyleOf(int n)
+        {
+            var s = (Layout.Style)(((uint)n * 2654435761u >> 16) % 3);
+            return s == Layout.Style.Concentric && DifficultyOf(n) != Difficulty.Normal ? Layout.Style.Banded : s;
+        }
 
         static LevelData Build(int number, int colors, int attempt)
         {
