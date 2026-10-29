@@ -1,6 +1,6 @@
 import hashlib, json, os, re
 from . import paths
-from .textutil import clip
+from .textutil import clip, secret_pairs, secret_value
 
 SKIP = {'Library', 'Temp', 'obj', 'bin', 'Builds', 'Logs', '.git', 'UserSettings'}
 MIN = 64                    # smaller files (stubs, tiny metas) legitimately coincide
@@ -33,45 +33,43 @@ def _leak_line(path):
             if paths.redact().redact_text(line) != line: return n
     return 0
 
-MAX_VALUES, MAX_VALUE_LEN, MAX_DUMP = 200, 200, 20_000_000
-TEXT_EXT = ('.cs', '.json', '.md', '.txt', '.asmdef')
+PER_KEY, MAX_VALUE_LEN, MAX_DUMP = 50, 200, 20_000_000
 
 def _secret_values(spec_path, assets_dump):
-    """[(file, key, value)] of the original secret values named by spec['secrets'], read from the raw dump. Never reported."""
+    """{value bytes: [(file, key)]} of the original secret values named by spec['secrets'], read from the raw dump.
+    Values are never reported. At most PER_KEY per {file,key} so no key can starve another; long values are checked by their first 200 chars."""
     try:
         with open(spec_path, encoding='utf-8') as fh: entries = json.load(fh).get('secrets', [])
-    except (OSError, ValueError, AttributeError, RecursionError): return []
-    out = []
-    def walk(node, rel, key):
-        if isinstance(node, dict):
-            for k, v in node.items():
-                if k == key:
-                    for x in (v if isinstance(v, list) else [v]):
-                        if isinstance(x, bool): continue
-                        s = x if isinstance(x, str) else str(x) if isinstance(x, int) and len(str(abs(x))) >= 6 else ''
-                        if len(s) >= 4 and s != '<REDACTED>' and len(s) <= MAX_VALUE_LEN and (rel, key, s) not in out: out.append((rel, key, s))
-                walk(v, rel, key)
-        elif isinstance(node, list):
-            for v in node: walk(v, rel, key)
+    except (OSError, ValueError, AttributeError, RecursionError): return {}
+    out = {}
     for e in entries if isinstance(entries, list) else []:
         if not (isinstance(e, dict) and isinstance(e.get('file'), str) and isinstance(e.get('key'), str)): continue
-        f = os.path.join(assets_dump, e['file'])
+        f, key, mine = os.path.join(assets_dump, e['file']), e['key'], set()
         try:
             if os.path.getsize(f) > MAX_DUMP: continue
-            with open(f, encoding='utf-8', errors='replace') as fh: walk(json.load(fh), e['file'], e['key'])
+            with open(f, encoding='utf-8', errors='replace') as fh: data = json.load(fh)
+            for name, leaf in secret_pairs(data, lambda k: k == key):
+                v = secret_value(leaf)
+                if v is not None: mine.add(v[:MAX_VALUE_LEN])
+                if len(mine) >= PER_KEY: break
         except (OSError, ValueError, RecursionError): continue
-    return out[:MAX_VALUES]
+        for v in mine:
+            if (e['file'], key) not in out.setdefault(v.encode('utf-8', 'replace'), []): out[v.encode('utf-8', 'replace')].append((e['file'], key))
+    return out
 
-def _value_hits(values, texts):
-    """problems for every exact substring hit of a secret value in the (label, path) files; names file+key, never the value"""
+def _value_hits(values, files):
+    """problems for exact byte hits of a secret value in the (label, path, optional) files; names file+key, never the value"""
     out = []
-    for label, path in texts:
+    for label, path, optional in files:
         try:
             if os.path.getsize(path) > MAX_SCAN: continue
-            with open(path, encoding='utf-8', errors='replace') as fh: text = fh.read()
-        except OSError: continue
-        for rel, key, val in values:
-            if val in text: out.append(f'secret value from {rel}:{key} appears in {label}')
+            with open(path, 'rb') as fh: data = fh.read()
+        except FileNotFoundError:
+            if not optional: out.append(f'unreadable: {label}')
+            continue
+        except OSError: out.append(f'unreadable: {label}'); continue
+        for val, where in values.items():
+            if val in data: out += [f'secret value from {rel}:{key} appears in {label}' for rel, key in where]
     return out
 
 def verify(project, apk_dir, spec_path=None, assets_dump=None, extra_text_files=()):
@@ -101,11 +99,11 @@ def verify(project, apk_dir, spec_path=None, assets_dump=None, extra_text_files=
                 spec = clip(spec, LINE)
                 if paths.redact().redact_obj(spec) != spec: problems.append('possible secret in spec.json')
         except (OSError, ValueError, RecursionError): problems.append('spec.json unreadable')
-        values = _secret_values(spec_path, assets_dump) if assets_dump else []
+        values = _secret_values(spec_path, assets_dump) if assets_dump else {}
         if values:
             d = os.path.dirname(os.path.abspath(spec_path))
-            texts = [(n, os.path.join(d, n)) for n in (os.path.basename(spec_path), 'spec_index.md', 'rules.md')]
-            texts += [(os.path.relpath(f, project), f) for f in _files(project, SKIP) if f.endswith(TEXT_EXT)]
-            texts += [(f, f) for f in extra_text_files]
-            problems += _value_hits(values, texts)
+            files = [(n, os.path.join(d, n), True) for n in (os.path.basename(spec_path), 'spec_index.md', 'rules.md')]
+            files += [(os.path.relpath(f, project), f, False) for f in _files(project, SKIP)]    # every file type: an .xml/.asset/.bytes copy counts
+            files += [(f, f, False) for f in extra_text_files]
+            problems += [p for p in dict.fromkeys(_value_hits(values, files)) if p not in problems]
     return problems

@@ -186,4 +186,64 @@ class VerifyAssetsDumpTests(unittest.TestCase):
         put(self.wd, 'spec.json', json.dumps({'secrets': [{'file': 'mono/gone.json', 'key': 'k'}]}))
         self.assertEqual(self.run_verify(), [])
 
+class VerifyValueRobustnessTests(unittest.TestCase):
+    def tmp(self):
+        d = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, d, ignore_errors=True); return d
+
+    def setUp(self):
+        self.apk, self.proj, self.wd = self.tmp(), self.tmp(), self.tmp()
+        put(self.apk, 'assets/tex.png', PNG); put(self.proj, 'Assets/Scripts/A.cs', 'class A {}')
+        self.dump = os.path.join(self.wd, 'assets_dump')
+
+    def spec(self, dump_obj, entries):
+        put(self.wd, 'assets_dump/c.json', json.dumps(dump_obj))
+        return put(self.wd, 'spec.json', json.dumps({'secrets': [{'file': 'c.json', 'key': k} for k in entries]}))
+
+    def run_verify(self, spec): return verify(self.proj, self.apk, spec, assets_dump=self.dump)
+
+    def test_over_matched_key_cannot_starve_real_secret(self):
+        spec = self.spec({'aaaPass': ['fake-common-%04d' % i for i in range(250)], 'zzzSdkKey': 'FAKErealvalue-77'}, ['aaaPass', 'zzzSdkKey'])
+        put(self.proj, 'Assets/Scripts/B.cs', 'const string K = "FAKErealvalue-77";')
+        out = self.run_verify(spec)
+        self.assertEqual(len(out), 1); self.assertIn('zzzSdkKey', out[0]); self.assertNotIn('FAKErealvalue-77', out[0])
+
+    def test_twenty_thousand_values_fast(self):
+        data = {'k%03dPass' % i: ['fake-%03d-value-%03d' % (i, j) for j in range(50)] for i in range(400)}
+        spec = self.spec(data, list(data))
+        for i in range(5): put(self.proj, 'Assets/Scripts/F%d.cs' % i, 'class F {}' * 100)
+        t = time.monotonic(); out = self.run_verify(spec)
+        self.assertEqual(out, []); self.assertLess(time.monotonic() - t, 3)
+
+    def test_long_value_checked_by_prefix(self):
+        v = 'FAKElong-' + 'x' * 400
+        spec = self.spec({'sdkKey': v}, ['sdkKey'])
+        put(self.proj, 'Assets/Scripts/B.cs', 'var s = "' + v[:200] + 'DIFFERENT-TAIL";')
+        out = self.run_verify(spec); self.assertEqual(len(out), 1); self.assertNotIn('xxxx', out[0])
+
+    def test_any_file_type_scanned_as_bytes(self):
+        spec = self.spec({'sdkKey': 'FAKE-sdk-value-1'}, ['sdkKey'])
+        for rel in ('Assets/a.xml', 'Assets/b.asset', 'Assets/c.bytes'): put(self.proj, rel, b'\x00\x01FAKE-sdk-value-1\xff')
+        out = self.run_verify(spec); self.assertEqual(len(out), 3)
+        for rel in ('a.xml', 'b.asset', 'c.bytes'): self.assertTrue(any(rel in p for p in out))
+
+    def test_unreadable_project_file_is_reported_once(self):
+        spec = self.spec({'sdkKey': 'FAKE-sdk-value-1'}, ['sdkKey'])
+        os.symlink(os.path.join(self.proj, 'gone'), os.path.join(self.proj, 'Assets', 'dead.cs'))
+        self.assertEqual(self.run_verify(spec), ['unreadable: ' + os.path.join('Assets', 'dead.cs')])
+
+    def test_flag_words_and_short_alpha_not_secret_values(self):
+        spec = self.spec({'passType': 'true', 'passMode': 'full', 'passNo': 'No', 'dbgPass': 'null'}, ['passType', 'passMode', 'passNo', 'dbgPass'])
+        put(self.proj, 'Assets/Scripts/B.cs', 'bool a = true; var m = "full"; object n = null; var x = "No";')
+        self.assertEqual(self.run_verify(spec), [])
+
+    def test_eligibility_boundaries_still_checked(self):
+        spec = self.spec({'sdkKey': 'abcdefghijk', 'passCode': 'ab12cd'}, ['sdkKey', 'passCode'])
+        put(self.proj, 'Assets/Scripts/B.cs', 'var a = "abcdefghijk"; var b = "ab12cd";')
+        self.assertEqual(len(self.run_verify(spec)), 2)
+
+    def test_list_values_and_kv_pair_shape(self):
+        spec = self.spec({'keys': [{'key': 'PassCheat', 'value': 'FAKEkv-value-9'}], 'pins': {'sdkKeys': ['FAKElist-val-1']}}, ['PassCheat', 'sdkKeys'])
+        put(self.proj, 'Assets/Scripts/B.cs', 'var a = "FAKEkv-value-9"; var b = "FAKElist-val-1";')
+        out = self.run_verify(spec); self.assertEqual(len(out), 2)
+
 if __name__ == '__main__': unittest.main()
