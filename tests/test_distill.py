@@ -130,6 +130,11 @@ class DistillTests(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(d, 'spec_index.md')))
         self.assertIn('Odin', ' '.join(spec['coverage']['notes']))
 
+    def test_spec_index_points_at_dump_not_missing_decompiler_tools(self):
+        d = self.workdir(); distill.distill(d)
+        with open(os.path.join(d, 'spec_index.md')) as fh: text = fh.read()
+        self.assertIn('il2cpp/dump.cs', text); self.assertNotIn('fn.py', text); self.assertNotIn('xref.py', text)
+
     def test_hints_widen_class_filter(self):
         d = self.workdir(); write(d, 'hints.json', json.dumps({'keywords': ['Popup']}))
         spec = distill.distill(d)

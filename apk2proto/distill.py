@@ -213,8 +213,8 @@ def distill(wd, limit=100_000):
     _fit(spec, limit); validate(spec)
     with open(os.path.join(wd, 'spec.json'), 'w', encoding='utf-8') as fh: json.dump(spec, fh, indent=1)
     with open(os.path.join(wd, 'spec_index.md'), 'w', encoding='utf-8') as fh:
-        fh.write('# spec index\n\nDeep dives (kit at `%s`):\n'
-                 '- class body: `bin/fn.py \'Class$$Method\' DIR -n 120`; field users: `bin/xref.py -f Class field`\n'
+        fh.write('# spec index\n\nDeep dives (kit at `%s`; Ghidra decompilation is optional and heavy, see kit docs):\n'
+                 '- class bodies: grep the class name from spec.json in `il2cpp/dump.cs`\n'
                  '- raw dump: `il2cpp/dump.cs`; config assets: `assets_dump/`; strings: `il2cpp/stringliteral.json`\n'
                  '- coverage: see `spec.json` key `coverage`\n' % paths.KIT)
     return spec

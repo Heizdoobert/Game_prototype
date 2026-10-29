@@ -21,22 +21,29 @@ Answer the user in the user's language (this user speaks Vietnamese). This file 
 3. Authoring (exit 3). Read `WORKDIR/spec.json`, **check `coverage` first and tell the user what is thin**:
    - `coverage.notes` lists what distill skipped or could not read; `trimmed: true` / `over_limit: true` mean the spec was cut to fit its size limit, so some classes/members are missing.
    - Odin-serialized config values are NOT decoded (`odin_assets` counts them): their numbers (balance, rewards, level layouts) are unknown. Mark such rules [?] or [A], never invent values as if known.
-   Then read `WORKDIR/spec_index.md`. Dig into the dump only for the 2-3 methods that carry a rule: kit `bin/fn.py 'Class$$Method' DIR -n 120` and `bin/xref.py -f Class field` (kit at `$GRE_KIT`, default `/mnt/second_drive/Ghost_melon/game_re_kit`). Never `cat` a decompiled `.c` file.
+   Then read `WORKDIR/spec_index.md`. For deeper detail read `WORKDIR/il2cpp/dump.cs` (grep the class names from `spec.json`; never paste it). Ghidra decompilation is optional and heavy, see the kit docs (`$GRE_KIT`, default `/mnt/second_drive/Ghost_melon/game_re_kit`); this pipeline never produces decompiled `.c` files, so the kit's `fn.py` / `xref.py` do not apply.
+   To widen which classes/enums distill keeps, put `WORKDIR/hints.json` = `{"keywords": ["extra", "words"]}` before `distill` (extra case-insensitive name matches), then re-run.
    Write `WORKDIR/module/` in the shape of `modules/candyjam/` (the worked example):
    - `module.json` `{"id": "...", "name": "..."}`; id is lowercase letters/digits only.
    - `Core/` pure C#, no `UnityEngine` (it is tested headless by `dotnet`).
    - `View/GameModule.cs`: the `IGameModule` implementation, plus the board view and an `IPlay`.
-   - `Tests/*Tests.cs`, each with `public static void Run()` using `T.Check`.
+   - `Tests/`: any file names, but each test class must be named `*Tests` and have `public static void Run()` (uses `T.Check`). The harness runs every such class and, once `Game/` exists, fails if no module test class ran.
    - Write `WORKDIR/rules.md`: every rule tagged [C] confirmed in code, [A] assumed/typical for the genre, [S] seen in strings/config names only, [?] unknown. Tags first, then the rule text.
-4. Re-run the same `run` command. It resumes at `author` (passes once `View/GameModule.cs` exists), then scaffold, test, verify, build, install. Fix the printed cause and re-run; use `--from STAGE` to skip ahead.
+4. Re-run the same `run` command. It resumes at `author` (passes once `module/View/GameModule.cs` and `WORKDIR/rules.md` both exist), then scaffold, test, verify, build, install. Fix the printed cause and re-run; use `--from STAGE` to skip ahead.
 5. Hard rules:
    - Do not print, quote or share contents of `apk/`, `il2cpp/`, `assets_dump/`, `raw/` (they hold passwords and SDK keys). Describe, never paste.
    - One heavy process at a time (dotnet build, Unity, Ghidra); `/tmp` is RAM. Never `pkill -f`/`pgrep -f` a pattern in your own command line.
    - Never weaken `verify` or the module tests to get green.
 
+## Fast loop
+
+Core and Tests compile in about 4 s: after editing the module run `python3 -m apk2proto run GAME.apk WORKDIR --only scaffold` then `--only test`. View code (`UnityEngine`) is only compiled by the Unity build (about 2 min), so keep `View/` thin and put every rule in `Core/`.
+
 ## Module contract
 
 The contract is the XML doc comments in `template/Assets/Scripts/Shell/View/IGameModule.cs` (`IGameModule`, `IPlay`, `LevelInfo`, `BoosterDef`, `PlayStatus`). Read that file before writing a module; `modules/candyjam/` is a complete example (Core rules, tests, `GameModule.cs`, `PlayController.cs`).
+
+Hearts, coins and revive come from the shell: read them from `IGameModule.Config` (a `ShellConfig`), do not hardcode them in the module. `modules/candyjam/View/Sprites.cs` and `Palette.cs` are reusable procedural-art examples (generate textures in code, no extracted art).
 
 Rules for module authoring:
 - Exactly one `IGameModule` implementation in the project, marked `[UnityEngine.Scripting.Preserve]`, parameterless constructor (the shell finds it by reflection).
@@ -46,3 +53,4 @@ Rules for module authoring:
 - Never copy original game code or assets into the module; re-express rules in new code.
 - Tag every rule in `rules.md` with [C]/[A]/[S]/[?] and write nothing the spec does not support without tagging it [A].
 - `verify` also fails with `possible secret in <file>:<line>` when the kit's redact check would change a `.cs`/`.json` line in the project (e.g. an identifier or string that looks like a key/token/password assignment) or `spec.json`; fix by renaming/removing the offender, not by editing verify.
+- `verify` also checks exact values: every secret value the spec's `secrets` list points at (read back from the raw dump) must not appear in `spec.json`, `spec_index.md`, `rules.md`, the project or the module files. The message names the file and key, never the value; remove the value (describe it as 'a cheat password exists', never quote it).
