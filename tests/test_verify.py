@@ -50,7 +50,11 @@ class VerifyTests(unittest.TestCase):
 
     def test_secret_in_project_text_detected(self):
         put(self.proj, 'Assets/Scripts/B.cs', 'var x = {"apiKey": "abcd1234efgh"};')
-        self.assertTrue(any('B.cs' in p for p in verify(self.proj, self.apk)))
+        self.assertEqual(verify(self.proj, self.apk), [f'possible secret in {os.path.join("Assets", "Scripts", "B.cs")}:1'])
+
+    def test_secret_line_number_reported(self):
+        put(self.proj, 'Assets/Scripts/B.cs', 'class B {}\n\nvar x = {"apiKey": "abcd1234efgh"};\n')
+        self.assertTrue(verify(self.proj, self.apk)[0].endswith('B.cs:3'))
 
     def test_problem_names_path_never_secret(self):
         put(self.proj, 'Assets/Scripts/B.cs', 'var x = {"apiKey": "abcd1234efgh"};')
@@ -76,6 +80,52 @@ class VerifyTests(unittest.TestCase):
         spec = put(self.tmp(), 'spec.json', json.dumps({'k': 'a' * 300_000}))
         t = time.monotonic()
         self.assertEqual(verify(self.proj, self.apk, spec), [])
+        self.assertLess(time.monotonic() - t, 5)
+
+    def test_missing_apk_dir_not_vacuous(self):
+        out = verify(self.proj, os.path.join(self.apk, 'nope'))
+        self.assertEqual(out, ['apk assets/res not found: asset-copy check could not run'])
+
+    def test_symlinked_apk_dir_works(self):
+        link = os.path.join(self.tmp(), 'link'); os.symlink(self.apk, link)
+        put(self.proj, 'Assets/Art/x.bin', PNG)
+        out = verify(self.proj, link)
+        self.assertEqual(len(out), 1); self.assertIn('x.bin', out[0])
+        parent = self.tmp(); os.rmdir(parent); os.symlink(os.path.dirname(self.apk), parent); self.addCleanup(os.unlink, parent)
+        out = verify(self.proj, os.path.join(parent, os.path.basename(self.apk)))
+        self.assertEqual(len(out), 1); self.assertIn('x.bin', out[0])
+
+    def test_dangling_symlink_unreadable_continues(self):
+        os.symlink(os.path.join(self.proj, 'gone'), os.path.join(self.proj, 'Assets', 'dead.cs'))
+        put(self.proj, 'Assets/Scripts/B.cs', 'var x = {"apiKey": "abcd1234efgh"};')
+        out = verify(self.proj, self.apk)
+        self.assertIn('unreadable: ' + os.path.join('Assets', 'dead.cs'), out)
+        self.assertTrue(any('B.cs:1' in p for p in out))
+
+    @unittest.skipIf(hasattr(os, 'geteuid') and os.geteuid() == 0, 'root ignores file modes')
+    def test_mode_000_file_unreadable_continues(self):
+        p = put(self.proj, 'Assets/Scripts/Locked.cs', 'class L {}' * 20); os.chmod(p, 0)
+        self.addCleanup(os.chmod, p, 0o600)
+        put(self.proj, 'Assets/Scripts/B.cs', 'var x = {"apiKey": "abcd1234efgh"};')
+        out = verify(self.proj, self.apk)
+        self.assertIn('unreadable: ' + os.path.join('Assets', 'Scripts', 'Locked.cs'), out)
+        self.assertTrue(any('B.cs:1' in p for p in out))
+
+    def test_missing_spec_unreadable(self):
+        self.assertEqual(verify(self.proj, self.apk, os.path.join(self.tmp(), 'spec.json')), ['spec.json unreadable'])
+
+    def test_invalid_json_spec_unreadable(self):
+        spec = put(self.tmp(), 'spec.json', '{not json')
+        self.assertEqual(verify(self.proj, self.apk, spec), ['spec.json unreadable'])
+
+    def test_oversized_spec_key_flagged(self):
+        spec = put(self.tmp(), 'spec.json', json.dumps({'a': [{'k' * 5000: 1}]}))
+        self.assertEqual(verify(self.proj, self.apk, spec), ['spec.json has an oversized key'])
+
+    def test_many_blob_lines_fast(self):
+        put(self.proj, 'Assets/Scripts/M.cs', ('a' * 4000 + '\n') * 400)
+        t = time.monotonic()
+        self.assertEqual(verify(self.proj, self.apk), [])
         self.assertLess(time.monotonic() - t, 5)
 
 if __name__ == '__main__': unittest.main()
