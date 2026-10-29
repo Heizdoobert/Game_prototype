@@ -4,22 +4,25 @@ class Workdir:
     def __init__(self, path):
         self.path = os.path.abspath(path); os.makedirs(self.path, exist_ok=True)
         self.file = os.path.join(self.path, 'state.json')
-        self.state = json.load(open(self.file)) if os.path.exists(self.file) else {}
+        if os.path.exists(self.file):
+            with open(self.file) as fh: self.state = json.load(fh)
+        else: self.state = {}
 
     def p(self, *parts): return os.path.join(self.path, *parts)
     def is_done(self, stage, key): return self.state.get(stage) == key
 
     def mark(self, stage, key):
         self.state[stage] = key
-        tmp = self.file + '.tmp'; json.dump(self.state, open(tmp, 'w'), indent=1); os.replace(tmp, self.file)
+        tmp = self.file + '.tmp'
+        with open(tmp, 'w') as fh: json.dump(self.state, fh, indent=1)
+        os.replace(tmp, self.file)
 
     @contextlib.contextmanager
     def lock(self):                       # one heavy stage at a time (low-RAM machine)
-        f = open(self.p('.lock'), 'w')
-        try: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError: raise SystemExit('another apk2proto stage is running in ' + self.path)
-        try: yield
-        finally: fcntl.flock(f, fcntl.LOCK_UN); f.close()
+        with open(self.p('.lock'), 'w') as f:   # closing f releases the flock
+            try: fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError: raise SystemExit('another apk2proto stage is running in ' + self.path)
+            yield
 
 def fingerprint(*paths):
     h = hashlib.sha1()
