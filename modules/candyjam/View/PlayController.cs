@@ -119,6 +119,7 @@ namespace CandyJam.View
         public void UseBooster(BoosterKind k)
         {
             if (Game == null || busy || Game.State != GameState.Playing) return;
+            if (profile.Level < Rules.UnlockLevel[(int)k]) { Say("Locked"); return; }
             if (!CanPay(k)) { Say("Not enough coins"); return; }
             if (k == BoosterKind.Rainbow)
             {
