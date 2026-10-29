@@ -25,17 +25,9 @@ static class LevelGenTests
             sw.Start();
             var a = LevelGen.Generate(n);
             sw.Stop();
-            var b = LevelGen.Generate(n);
             int len = a.Candies.Length;
             T.Check(len % 3 == 0 && len >= 54 && len <= 297, "level " + n + " candy count " + len);
-            bool same = len == b.Candies.Length && a.Diff == b.Diff && a.Rows.Length == b.Rows.Length;
-            for (int i = 0; same && i < len; i++)
-            {
-                var p = a.Candies[i];
-                var q = b.Candies[i];
-                same = p.X == q.X && p.Y == q.Y && p.Layer == q.Layer && p.Color == q.Color;
-            }
-            T.Check(same, "level " + n + " deterministic");
+            T.Check(TestLevels.SameAsShared(n, a), "level " + n + " deterministic");
             var count = new int[Rules.Palette];
             foreach (var c in a.Candies)
             {
@@ -60,10 +52,10 @@ static class LevelGenTests
         double mean = sw.Elapsed.TotalMilliseconds / 60;
         Console.WriteLine("levels 1-60: mean generation " + mean.ToString("F0") + " ms, colours" + colours);
         T.Check(mean <= 1500, "mean generation time over levels 1-60 is " + mean.ToString("F0") + " ms (<= 1500)");
-        T.Check(LevelGen.Generate(50).Colors >= 6, "level 50 has at least 6 colours");
+        T.Check(TestLevels.Gen(50).Colors >= 6, "level 50 has at least 6 colours");
         T.Check(many > 0 && skewed * 2 >= many, "colour weights: largest group >= 2x smallest in " + skewed + "/" + many + " levels 20-60 with >= 6 colours");
-        T.Check(LevelGen.Generate(1).Candies.Length == 54, "level 1 has 54 candies");
-        T.Check(LevelGen.Generate(50).Candies.Length >= 144, "level 50 is big");
+        T.Check(TestLevels.Gen(1).Candies.Length == 54, "level 1 has 54 candies");
+        T.Check(TestLevels.Gen(50).Candies.Length >= 144, "level 50 is big");
 
         // past level 60 the phone generates at level start: every sampled level <= 3 s, mean <= 1 s
         var spot = new Stopwatch();
@@ -76,6 +68,7 @@ static class LevelGenTests
             var lv = LevelGen.Generate(n);
             double dt = spot.Elapsed.TotalSeconds;
             total += dt;
+            T.Check(TestLevels.SameAsShared(n, lv), "level " + n + " deterministic");
             T.Check(dt <= 3.0, "level " + n + " generates in " + dt.ToString("F1") + " s (<= 3)");
             T.Check(lv.Candies.Length % 3 == 0, "level " + n + " candy count multiple of 3");
             T.Check(Solver.Solve(lv), "level " + n + " solvable by the bot");
@@ -84,6 +77,6 @@ static class LevelGenTests
         Console.WriteLine("sampled levels:" + times);
         T.Check(total / sample.Length <= 1.0, "mean generation of sampled levels " + (total / sample.Length).ToString("F2") + " s (<= 1)");
         foreach (int n in new[] { 100, 123 })
-            T.Check(Solver.Solve(LevelGen.Generate(n)), "level " + n + " solvable by the bot");
+            T.Check(Solver.Solve(TestLevels.Gen(n)), "level " + n + " solvable by the bot");
     }
 }

@@ -145,7 +145,7 @@ static class RulesTests
 
     static void CloneSameFuture()
     {
-        var level = LevelGen.Generate(7);
+        var level = TestLevels.Gen(7);
         var g = new Game(level, 5);
         for (int i = 0; i < 6; i++) { var f = g.Board.Free(); if (f.Count == 0 || g.State != GameState.Playing) break; g.Tap(f[0], out _); }
         var k = g.Clone();

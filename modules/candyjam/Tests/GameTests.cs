@@ -16,6 +16,30 @@ static class TestLevels
             Rows = new[] { new ProgressRow(100, new[] { 1 }) },
         };
     }
+
+    // generation dominates the harness: every test class shares one generated copy per level
+    public static readonly Dictionary<int, LevelData> Generated = new Dictionary<int, LevelData>();
+
+    public static LevelData Gen(int n)
+    {
+        if (!Generated.TryGetValue(n, out var l)) Generated[n] = l = LevelGen.Generate(n);
+        return l;
+    }
+
+    // a fresh Generate(n) against the shared copy (or a second fresh call): proves determinism without a third generation
+    public static bool SameAsShared(int n, LevelData fresh)
+    {
+        if (!Generated.TryGetValue(n, out var b)) { b = LevelGen.Generate(n); Generated[n] = fresh; }
+        var a = fresh;
+        bool same = a.Candies.Length == b.Candies.Length && a.Diff == b.Diff && a.Rows.Length == b.Rows.Length;
+        for (int i = 0; same && i < a.Candies.Length; i++)
+        {
+            var p = a.Candies[i];
+            var q = b.Candies[i];
+            same = p.X == q.X && p.Y == q.Y && p.Layer == q.Layer && p.Color == q.Color;
+        }
+        return same;
+    }
 }
 
 static class GameTests

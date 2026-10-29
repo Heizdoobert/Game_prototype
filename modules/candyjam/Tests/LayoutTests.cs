@@ -122,13 +122,7 @@ static class LayoutTests
         T.Check(same, "Layout.Build is deterministic for a seed");
         foreach (int n in new[] { 3, 8, 15, 40 })
         {
-            var p = LevelGen.Generate(n);
-            var q = LevelGen.Generate(n);
-            bool eq = p.Candies.Length == q.Candies.Length;
-            for (int i = 0; eq && i < p.Candies.Length; i++)
-                eq = p.Candies[i].X == q.Candies[i].X && p.Candies[i].Y == q.Candies[i].Y
-                    && p.Candies[i].Layer == q.Candies[i].Layer && p.Candies[i].Color == q.Candies[i].Color;
-            T.Check(eq, "Generate(" + n + ") is deterministic");
+            T.Check(TestLevels.SameAsShared(n, LevelGen.Generate(n)), "Generate(" + n + ") is deterministic");
         }
     }
 
@@ -145,8 +139,7 @@ static class LayoutTests
 
     static void CountsTiersScores()
     {
-        var cache = new Dictionary<int, LevelData>();
-        Func<int, LevelData> gen = n => { if (!cache.ContainsKey(n)) cache[n] = LevelGen.Generate(n); return cache[n]; };
+        Func<int, LevelData> gen = TestLevels.Gen;
 
         for (int n = 1; n <= 60; n++)
         {
@@ -172,16 +165,20 @@ static class LayoutTests
         T.Check(vh >= 12 && vh <= 27, "very hard share " + vh + "/300");
 
         double sN = 0, sH = 0, sV = 0; int cN = 0, cH = 0, cV = 0;
+        // every Hard/VeryHard level in 15-120 against the Normal levels next to one: same board sizes on both sides
+        // (levels past 60 cost ~1 s each, and a plain stride skews the size mix one way or the other)
         for (int n = 15; n <= 120; n++)
         {
             var d = LevelGen.DifficultyOf(n);
+            if (d == Difficulty.Normal && LevelGen.DifficultyOf(n - 1) == Difficulty.Normal
+                && LevelGen.DifficultyOf(n + 1) == Difficulty.Normal) continue;
             double s = LevelScore.Of(gen(n));
             if (d == Difficulty.Normal) { sN += s; cN++; }
             else if (d == Difficulty.Hard) { sH += s; cH++; }
             else { sV += s; cV++; }
         }
         sN /= cN; sH /= cH; sV /= cV;
-        Console.WriteLine("mean score 15-120: normal " + sN.ToString("F0") + " hard " + sH.ToString("F0") + " veryhard " + sV.ToString("F0"));
+        Console.WriteLine("mean score 15-120, tier levels vs adjacent Normal: normal " + sN.ToString("F0") + " hard " + sH.ToString("F0") + " veryhard " + sV.ToString("F0"));
         T.Check(sV > sN, "VeryHard mean score above Normal");
         T.Check(sH > sN, "Hard mean score above Normal");
         // the score counts 5 per candy covered at start
