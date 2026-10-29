@@ -1,0 +1,16 @@
+Library/
+Temp/
+Obj/
+obj/
+Logs/
+UserSettings/
+Tests~/Core.Tests/bin/
+Tests~/Core.Tests/obj/
+*.csproj
+*.sln
+!Tests~/Core.Tests/Core.Tests.csproj
+Builds/
+build.log
+.utmp/
+Tests~/Core.Tests/Game/
+Assets/Scripts/Game/
