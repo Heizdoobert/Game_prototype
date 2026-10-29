@@ -33,8 +33,9 @@ static class RulesTests
         T.Check(!g.Board.IsFree(under), "candy 0 is covered");
         T.Check(g.UseNeedle(under, out var r, out int dest) == BoosterResult.Success && r == TapResult.ToJar && dest == 0, "needle takes a covered candy into the open jar");
         T.Check(under.Removed && g.Board.Remaining == 2, "needle removed it from the board");
-        T.Check(g.UseNeedle(under, out _, out _) == BoosterResult.Unusable, "removed candy is unusable");
-        T.Check(g.UseNeedle(null, out _, out _) == BoosterResult.Unusable, "null target is unusable");
+        string s0 = Snap(g);
+        T.Check(g.UseNeedle(under, out _, out _) == BoosterResult.Unusable && Snap(g) == s0 && g.Board.Remaining == 2, "removed candy is unusable, nothing changes");
+        T.Check(g.UseNeedle(null, out _, out _) == BoosterResult.Unusable && Snap(g) == s0, "null target is unusable, nothing changes");
 
         // two jars take two of the four colours; a covered candy of another colour goes to the tray
         var g3 = new Game(TwoLayerColours());
@@ -43,56 +44,69 @@ static class RulesTests
         T.Check(waiting != null, "a covered candy without a jar exists");
         T.Check(g3.UseNeedle(waiting, out r, out dest) == BoosterResult.Success && r == TapResult.ToTray && g3.TrayCount == 1, "needle sends a jarless candy to the tray");
 
-        // full tray, no matching jar: unusable and the candy stays (colour 0 jar keeps the game alive)
+        // full tray, no matching jar: unusable and the candy stays (the colour 0 jar keeps the game alive)
         var g4 = new Game(TestLevels.Flat(1, 2, 3, 4, 5, 6, 0, 0, 0));
         for (int i = 0; i < 5; i++) g4.Tap(g4.Board.Candies[i], out _);
         T.Check(g4.TrayCount == g4.TraySlots && g4.State == GameState.Playing, "tray is full and the game is not over");
         var rest = g4.Board.Candies[5];
+        string s4 = Snap(g4);
         T.Check(g4.UseNeedle(rest, out _, out _) == BoosterResult.Unusable, "needle unusable with a full tray and no jar");
-        T.Check(!rest.Removed && g4.Board.Remaining == 4, "candy stays on the board");
+        T.Check(!rest.Removed && g4.Board.Remaining == 4 && Snap(g4) == s4, "candy stays, tray and jars unchanged");
 
-        // eight single colours: no jars, tray fills, game is lost
-        var lost = new Game(TestLevels.Flat(0, 1, 2, 3, 4, 5, 6, 7));
-        for (int i = 0; i < 5; i++) lost.Tap(lost.Board.Candies[i], out _);
-        T.Check(lost.State == GameState.Lost, "setup: game lost");
-        T.Check(lost.UseNeedle(lost.Board.Candies[5], out _, out _) == BoosterResult.Unusable, "needle unusable when not playing");
+        // Lost game where the target's colour has an open jar: only the State guard can refuse
+        var lost = LostGame();
+        T.Check(lost.State == GameState.Lost && lost.Jars[0] != null && lost.Jars[0].Color == 0, "setup: lost with an open colour 0 jar");
+        var hidden = lost.Board.Candies[0];
+        string sl = Snap(lost);
+        T.Check(lost.UseNeedle(hidden, out _, out _) == BoosterResult.Unusable, "needle unusable when not playing");
+        T.Check(!hidden.Removed && lost.Board.Remaining == 4 && Snap(lost) == sl, "lost game unchanged");
     }
 
-    // colours 0..3 as covered pairs: a candy on layer 1 sits on top of the layer 0 one
+    // three colour 0 candies at layer 0 under six single-colour candies at layer 1; five singles fill the tray,
+    // the sixth still covers colour 0, so no free candy matches the colour 0 jar: Lost
+    static Game LostGame()
+    {
+        var specs = new CandySpec[9];
+        for (int i = 0; i < 3; i++) specs[i] = new CandySpec(i * 0.1f, 0, 0, 0);
+        for (int i = 0; i < 6; i++) specs[3 + i] = new CandySpec(0, 0, 1, 1 + i);
+        var lvl = new LevelData { Number = 1, Diff = Difficulty.Normal, Candies = specs, Rows = new[] { new ProgressRow(100, new[] { 1 }) } };
+        var g = new Game(lvl);
+        for (int i = 3; i < 8; i++) g.Tap(g.Board.Candies[i], out _);
+        return g;
+    }
+
+    // colours i%4; candy i+6 (layer 1) sits on top of candy i (layer 0), so candies 0..5 start covered
     static LevelData TwoLayerColours()
     {
         var specs = new CandySpec[12];
-        for (int i = 0; i < 12; i++) specs[i] = new CandySpec((i % 6) * 3f, (i / 6) * 0f, i / 6, i % 4);
+        for (int i = 0; i < 12; i++) specs[i] = new CandySpec((i % 6) * 3f, 0, i / 6, i % 4);
         return new LevelData { Number = 1, Diff = Difficulty.Normal, Candies = specs, Rows = new[] { new ProgressRow(100, new[] { 1 }) } };
     }
 
     static void TrayDanger()
     {
-        var g = new Game(TestLevels.Flat(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-        T.Check(!g.TrayInDanger, "empty tray is not in danger");
-        // fill only with candies that have no jar so they stay in the tray
-        int n = 0;
-        foreach (var c in g.Board.Candies)
-        {
-            if (g.FindJar(c.Color) >= 0 || g.TrayCount >= g.TraySlots) continue;
-            g.Tap(c, out _);
-            n++;
-            bool expect = g.TrayCount == g.TraySlots - 1;
-            T.Check(g.TrayInDanger == expect, "danger flag at tray count " + g.TrayCount);
-        }
-        T.Check(n > 0, "tapped something");
-        T.Check(g.TrayCount == g.TraySlots || g.State != GameState.Playing, "tray reached capacity or the game ended");
-        T.Check(!g.TrayInDanger, "full tray is not 'in danger' (lost or about to be)");
+        // six single colours plus three of colour 0: the colour 0 jar keeps the game Playing with a full tray
+        var g = new Game(TestLevels.Flat(1, 2, 3, 4, 5, 6, 0, 0, 0));
+        T.Check(!g.TrayInDanger, "empty tray is safe");
+        for (int i = 0; i < 3; i++) g.Tap(g.Board.Candies[i], out _);
+        T.Check(g.TrayCount == 3 && !g.TrayInDanger, "3 of 5 is safe");
+        g.Tap(g.Board.Candies[3], out _);
+        T.Check(g.TrayCount == 4 && g.State == GameState.Playing && g.TrayInDanger == true, "4 of 5 is danger");
+        g.Tap(g.Board.Candies[4], out _);
+        T.Check(g.TrayCount == 5 && g.State == GameState.Playing, "setup: full tray, still playing (free candy matches the jar)");
+        T.Check(g.TrayInDanger == false, "5 of 5 is not danger");
 
-        var h = new Game(TestLevels.Flat(0, 1, 2, 3, 4, 5, 6, 7, 8, 9));
-        for (int i = 0; i < 20 && h.TrayCount < 3; i++)
-            foreach (var c in h.Board.Candies) if (!c.Removed && h.FindJar(c.Color) < 0 && h.TrayCount < 3) { h.Tap(c, out _); break; }
-        T.Check(h.TrayCount == 3 && !h.TrayInDanger, "3 of 5 is safe");
+        var h = new Game(TestLevels.Flat(1, 2, 3, 4, 5, 6, 0, 0, 0));
+        for (int i = 0; i < 3; i++) h.Tap(h.Board.Candies[i], out _);
         h.UseAddHole();
         T.Check(h.TraySlots == 6 && !h.TrayInDanger, "3 of 6 is safe");
-        foreach (var c in h.Board.Candies) if (!c.Removed && h.FindJar(c.Color) < 0 && h.TrayCount < 5) { h.Tap(c, out _); }
-        T.Check(h.TrayCount == 5 && h.TrayInDanger, "add hole moves the threshold: 5 of 6 is danger");
+        h.Tap(h.Board.Candies[3], out _);
+        T.Check(h.TrayCount == 4 && !h.TrayInDanger, "4 of 6 is safe after add hole");
+        h.Tap(h.Board.Candies[4], out _);
+        T.Check(h.TrayCount == 5 && h.TrayInDanger == true, "add hole moves the threshold: 5 of 6 is danger");
 
+        var lost = LostGame();
+        T.Check(lost.State == GameState.Lost && !lost.TrayInDanger, "lost is never in danger");
         var w = new Game(TestLevels.Flat(0, 0, 0));
         foreach (var c in w.Board.Candies) w.Tap(c, out _);
         T.Check(w.State == GameState.Won && !w.TrayInDanger, "won is never in danger");
@@ -101,12 +115,22 @@ static class RulesTests
     static void CloneIndependence()
     {
         var g = new Game(TestLevels.Flat(0, 0, 0, 1, 1, 1, 2, 2, 2));
+        int c0 = g.Jars[0].Color;
+        g.Tap(g.Board.Candies.Find(c => c.Color == c0), out _);
+        T.Check(g.Jars[0].Count == 1, "setup: jar 0 started on the original");
         var k = g.Clone();
-        T.Check(!ReferenceEquals(g.Board, k.Board) && !ReferenceEquals(g.Board.Candies[0], k.Board.Candies[0]), "clone has its own board");
-        T.Check(!ReferenceEquals(g.Tray, k.Tray) && !ReferenceEquals(g.Jars, k.Jars), "clone has its own tray and jars");
-        k.Tap(k.Board.Candies[0], out _);
-        T.Check(g.Board.Remaining == 9 && !g.Board.Candies[0].Removed, "mutating the clone leaves the original untouched");
-        T.Check(k.Board.Remaining == 8 && k.Board.Candies[0].Removed, "clone changed");
+        T.Check(k.Jars[0].Color == c0 && k.Jars[0].Count == 1, "clone sees the started jar");
+
+        k.Tap(k.Board.Candies.Find(c => !c.Removed && c.Color == c0), out int d);
+        T.Check(d == 0 && k.Jars[0].Count == 2, "clone jar count incremented");
+        T.Check(g.Jars[0].Count == 1, "original jar count unchanged (JarState not shared)");
+
+        var jarColors = new System.Collections.Generic.HashSet<int> { g.Jars[0].Color, g.Jars[1].Color };
+        var other = k.Board.Candies.Find(c => !jarColors.Contains(c.Color));
+        T.Check(k.Tap(other, out _) == TapResult.ToTray && k.Tray[0] == other.Color && k.TrayCount == 1, "clone tray took a candy");
+        T.Check(g.Tray[0] == -1 && g.TrayCount == 0, "original tray untouched");
+        T.Check(g.Board.Remaining == 8 && k.Board.Remaining == 6, "board counts diverge independently");
+        T.Check(!g.Board.Candies[other.Id].Removed, "original candy not removed");
     }
 
     static string Snap(Game g)
