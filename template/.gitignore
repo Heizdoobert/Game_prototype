@@ -12,5 +12,3 @@ Tests~/Core.Tests/obj/
 Builds/
 build.log
 .utmp/
-Tests~/Core.Tests/Game/
-Assets/Scripts/Game/
