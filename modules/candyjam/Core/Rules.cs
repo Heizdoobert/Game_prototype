@@ -14,6 +14,7 @@ namespace CandyJam.Core
         public const int TrayInit = 5;
         public const int TrayMax = 7;
         public const int Palette = 12;
+        public const int ShapeCount = 16;
         public const float CandyRadius = 0.5f;
         public const float CoverDist = 0.9f;
         public const int MaxHearts = 5;
