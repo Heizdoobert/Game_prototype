@@ -147,9 +147,13 @@ class KeyTests(unittest.TestCase):
     def test_none_without_proto_or_apk(self):
         for n in ('test', 'verify', 'build'): self.assertIsNone(self.st[n].key(self.wd, self.a))
 
+    def test_verify_never_skips(self):
+        for rel in ('proto/Assets/Scripts/A.cs', 'proto/build.json', 'spec.json'): self.put(rel)
+        self.assertIsNone(self.st['verify'].key(self.wd, self.a))
+
     def test_meta_and_scene_do_not_change_keys(self):
         for rel in ('proto/Assets/Scripts/A.cs', 'proto/Assets/Editor/B.cs', 'proto/build.json', 'proto/Builds/game.apk'): self.put(rel)
-        before = {n: self.st[n].key(self.wd, self.a) for n in ('test', 'verify', 'build')}
+        before = {n: self.st[n].key(self.wd, self.a) for n in ('test', 'build')}
         self.assertTrue(all(before.values()))
         self.put('proto/Assets/Scenes/Main.unity', 'rewritten'); self.put('proto/Assets/Scripts/A.cs.meta')
         self.assertEqual(before, {n: self.st[n].key(self.wd, self.a) for n in before})

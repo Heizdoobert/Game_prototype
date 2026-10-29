@@ -96,8 +96,7 @@ def _src(wd): return fingerprint(wd.p('proto', 'Assets', 'Scripts'), wd.p('proto
 
 # Unity rewrites scenes and adds .meta files during a build, so test/verify/build keys hash only hand-written inputs
 def _k_test(wd, a): return _src(wd) if os.path.isdir(wd.p('proto')) else None
-def _k_verify(wd, a):
-    return _cat(_src(wd), fingerprint(wd.p('spec.json'), wd.p('proto', 'build.json'))) if os.path.isdir(wd.p('proto')) else None
+def _k_verify(wd, a): return None      # safety gate (~16 s): never skip, module files can change under a stale key
 def _k_build(wd, a):
     if not os.path.isfile(wd.p('proto', 'Builds', 'game.apk')): return None
     return _cat(fingerprint(wd.p('proto', 'Assets', 'Scripts'), wd.p('proto', 'Assets', 'Editor'), suffixes=('.cs',)),
