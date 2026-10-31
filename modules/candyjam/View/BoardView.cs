@@ -30,7 +30,7 @@ namespace CandyJam.View
                 go.transform.position = center + (new Vector2(c.X, c.Y) - mid) * Scale;
                 go.transform.localScale = Vector3.one * Scale;
                 var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = Sprites.Disc;
+                sr.sprite = Art.Pack.Candy(c.Color).Sprite;
                 sr.sortingOrder = c.Layer * 10;
                 views[c] = sr;
             }
@@ -52,7 +52,9 @@ namespace CandyJam.View
                 var sr = kv.Value;
                 sr.enabled = !c.Removed;
                 if (c.Removed) continue;
-                Color col = Palette.Candy[c.Color];
+                var look = Art.Pack.Candy(c.Color);
+                sr.sprite = look.Sprite;
+                Color col = look.Tint;
                 if (!game.Board.IsFree(c)) col *= 0.45f;
                 col.a = 1f;
                 sr.color = col;

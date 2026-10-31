@@ -11,6 +11,13 @@ namespace CandyJam.View
         readonly BoosterDef[] boosters;
         PlayController ctl;
 
+        // gate: level n comes from Resources/CandyJam/levels/n.txt when that file exists, else from the generator
+        static readonly ILevelSource Levels = new AuthoredLevels(n =>
+        {
+            var t = Resources.Load<TextAsset>("CandyJam/levels/" + n);
+            return t == null ? null : t.text;
+        }, new GeneratedLevels());
+
         public GameModule()
         {
             boosters = new BoosterDef[Names.Length];
@@ -28,7 +35,7 @@ namespace CandyJam.View
 
         public LevelInfo Prepare(int level)
         {
-            var d = LevelGen.Generate(level);
+            var d = Levels.Get(level);
             return new LevelInfo { Number = level, WinCoins = Rules.WinCoins(d.Diff), Data = d };
         }
 

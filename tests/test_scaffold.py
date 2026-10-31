@@ -65,6 +65,16 @@ class ScaffoldTests(unittest.TestCase):
         for rel in ('Library/x', 'Builds/a.apk', 'Assets/Scripts/Shell/View/App.cs.meta'):
             self.assertTrue(os.path.exists(os.path.join(p, rel)), rel)
 
+    def test_module_resources_are_copied_and_replaced(self):
+        m, p = self.tmp(), os.path.join(self.tmp(), 'proto')
+        mk_module(m)
+        write(os.path.join(m, 'Resources', 'Demo', 'pack', 'jar.png'), 'png')
+        scaffold(p, paths.TEMPLATE, m)
+        self.assertTrue(os.path.exists(os.path.join(p, 'Assets/Resources/Demo/pack/jar.png')))
+        shutil.rmtree(os.path.join(m, 'Resources'))
+        scaffold(p, paths.TEMPLATE, m)
+        self.assertFalse(os.path.exists(os.path.join(p, 'Assets/Resources/Demo/pack/jar.png')))
+
     def test_missing_game_module_refused(self):
         m = self.tmp()
         mk_module(m, with_game=False)

@@ -122,7 +122,7 @@ namespace CandyJam.Core
             return g;
         }
 
-        static ProgressRow[] RowsFor(Difficulty d)
+        public static ProgressRow[] RowsFor(Difficulty d)
         {
             switch (d)
             {

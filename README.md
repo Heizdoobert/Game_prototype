@@ -34,6 +34,7 @@ module/
   module.json          {"id": "candyjam", "name": "Candy Jam"}   id = lowercase letters/digits
   Core/*.cs            pure C#, no UnityEngine
   View/GameModule.cs   the one IGameModule ([UnityEngine.Scripting.Preserve]) + board view + IPlay
+  Resources/           optional; copied to Assets/Resources: art/sound pack and hand-made levels (see ../docs/candyjam-core.md)
   Tests/*Tests.cs      public static void Run() using T.Check
 ```
 

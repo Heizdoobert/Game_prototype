@@ -22,18 +22,18 @@ namespace CandyJam.View
             pips = new SpriteRenderer[Rules.JarSlots][];
             for (int s = 0; s < Rules.JarSlots; s++)
             {
-                jarFrame[s] = Make("jar", Sprites.Jar, JarWorld(s), 1f, -50);
-                jarFill[s] = Make("fill", Sprites.Jar, JarWorld(s), 0.88f, -49);
+                jarFrame[s] = Make("jar", Art.Pack.Jar, JarWorld(s), 1f, -50);
+                jarFill[s] = Make("fill", Art.Pack.Jar, JarWorld(s), 0.88f, -49);
                 pips[s] = new SpriteRenderer[Rules.JarCapacity];
                 for (int i = 0; i < Rules.JarCapacity; i++)
-                    pips[s][i] = Make("pip", Sprites.Disc, JarWorld(s) + new Vector3((i - 1) * 0.6f, -0.1f, 0f), 0.5f, -48);
+                    pips[s][i] = Make("pip", Art.Pack.Candy(0).Sprite, JarWorld(s) + new Vector3((i - 1) * 0.6f, -0.1f, 0f), 0.5f, -48);
             }
             trayFrame = new SpriteRenderer[Rules.TrayMax];
             trayCandy = new SpriteRenderer[Rules.TrayMax];
             for (int t = 0; t < Rules.TrayMax; t++)
             {
-                trayFrame[t] = Make("slot", Sprites.Slot, TrayWorld(t), 1f, -50);
-                trayCandy[t] = Make("tc", Sprites.Disc, TrayWorld(t), 0.8f, -48);
+                trayFrame[t] = Make("slot", Art.Pack.Slot, TrayWorld(t), 1f, -50);
+                trayCandy[t] = Make("tc", Art.Pack.Candy(0).Sprite, TrayWorld(t), 0.8f, -48);
             }
         }
 
@@ -70,9 +70,10 @@ namespace CandyJam.View
                 jarFill[s].enabled = j != null;
                 for (int i = 0; i < Rules.JarCapacity; i++) pips[s][i].enabled = j != null && i < j.Count;
                 if (j == null) continue;
-                Color col = Palette.Candy[j.Color];
+                var look = Art.Pack.Candy(j.Color);
+                Color col = Art.Pack.Tint(j.Color);
                 jarFill[s].color = new Color(col.r, col.g, col.b, 0.5f);
-                for (int i = 0; i < Rules.JarCapacity; i++) pips[s][i].color = col;
+                for (int i = 0; i < Rules.JarCapacity; i++) { pips[s][i].sprite = look.Sprite; pips[s][i].color = look.Tint; }
             }
             for (int t = 0; t < Rules.TrayMax; t++)
             {
@@ -80,7 +81,10 @@ namespace CandyJam.View
                 trayFrame[t].enabled = open;
                 bool has = open && g.Tray[t] >= 0;
                 trayCandy[t].enabled = has;
-                if (has) trayCandy[t].color = Palette.Candy[g.Tray[t]];
+                if (!has) continue;
+                var tl = Art.Pack.Candy(g.Tray[t]);
+                trayCandy[t].sprite = tl.Sprite;
+                trayCandy[t].color = tl.Tint;
             }
         }
     }

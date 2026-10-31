@@ -21,7 +21,8 @@ namespace CandyJam.View
         Profile profile;
         Camera cam;
         bool busy, ended;
-        SpriteRenderer fly;
+        SpriteRenderer fly, bg;
+        int jarsSeen;
 
         public void Begin(LevelData level, Profile p, Camera c)
         {
@@ -34,6 +35,8 @@ namespace CandyJam.View
             tray.gameObject.SetActive(true);
             board.Build(Game, new Vector2(0f, 0.4f), 8.6f, 9.2f);
             tray.Refresh(Game);
+            ShowBackground();
+            jarsSeen = 0;
             busy = false; RainbowPending = false; NeedlePending = false; ended = false;
         }
 
@@ -48,6 +51,21 @@ namespace CandyJam.View
             Game = null;
             if (board != null) { board.Clear(); board.gameObject.SetActive(false); }
             if (tray != null) tray.gameObject.SetActive(false);
+            if (bg != null) bg.gameObject.SetActive(false);
+        }
+
+        // the pack's background, scaled to cover the screen; none = the camera colour shows
+        void ShowBackground()
+        {
+            var s = Art.Pack.Background;
+            if (s == null || !cam.orthographic) { if (bg != null) bg.gameObject.SetActive(false); return; }
+            if (bg == null) { bg = new GameObject("bg").AddComponent<SpriteRenderer>(); bg.sortingOrder = -100; }
+            bg.gameObject.SetActive(true);
+            bg.sprite = s;
+            float h = cam.orthographicSize * 2f, w = h * cam.aspect;
+            var size = s.bounds.size;
+            bg.transform.position = new Vector3(cam.transform.position.x, cam.transform.position.y, 0f);
+            bg.transform.localScale = Vector3.one * Mathf.Max(w / size.x, h / size.y);
         }
 
         void Update()
@@ -89,7 +107,7 @@ namespace CandyJam.View
         {
             busy = true;
             Vector3 from = board.PosOf(c);
-            Color col = Palette.Candy[c.Color];
+            var look = Art.Pack.Candy(c.Color);
             TapResult r;
             int dest;
             if (needle)
@@ -99,8 +117,9 @@ namespace CandyJam.View
             }
             else r = Game.Tap(c, out dest);
             if (r == TapResult.Rejected) { busy = false; yield break; }
+            Audio.Play(Sfx.Tap);
             fly = new GameObject("fly").AddComponent<SpriteRenderer>();
-            fly.sprite = Sprites.Disc; fly.color = col; fly.sortingOrder = 100;
+            fly.sprite = look.Sprite; fly.color = look.Tint; fly.sortingOrder = 100;
             fly.transform.localScale = Vector3.one * board.Scale;
             board.Refresh();
             Vector3 to = r == TapResult.ToJar ? tray.JarWorld(dest) : tray.TrayWorld(dest);
@@ -144,7 +163,7 @@ namespace CandyJam.View
                 case BoosterKind.AddJar: r = Game.UseAddJar(); break;
                 default: r = Game.UseVacuum(out _); break;
             }
-            if (r == BoosterResult.Success) Pay(k);
+            if (r == BoosterResult.Success) { Pay(k); Audio.Play(Sfx.Booster); }
             else Say(r == BoosterResult.LimitReached ? "Already at the limit" : "Can't use that now");
             Sync();
         }
@@ -170,10 +189,13 @@ namespace CandyJam.View
             if (Game == null) return;
             board.Refresh();
             tray.Refresh(Game);
+            if (Game.JarsCompleted > jarsSeen) Audio.Play(Sfx.Jar);
+            jarsSeen = Game.JarsCompleted;
             if (Game.State == GameState.Playing) ended = false; // e.g. after Revive
             else if (!ended)
             {
                 ended = true;
+                Audio.Play(Game.State == GameState.Won ? Sfx.Win : Sfx.Lose);
                 if (Ended != null) Ended((PlayStatus)(int)Game.State);
             }
         }

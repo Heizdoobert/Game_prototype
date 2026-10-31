@@ -2,7 +2,7 @@ import json, os, re, shutil
 
 
 def scaffold(proto, template, module):
-    """Copy template into proto and replace its Game dirs (Core, View, Tests) and their .meta files with the module's. Shell and Unity state (Library, Shell .meta) are kept."""
+    """Copy template into proto and replace its Game dirs (Core, View, Tests, Resources = the module's asset pack and authored levels) and their .meta files with the module's. Shell and Unity state (Library, Shell .meta) are kept."""
     if not os.path.isfile(os.path.join(module, 'module.json')) or not os.path.isfile(os.path.join(module, 'View', 'GameModule.cs')):
         raise SystemExit('module needs module.json and View/GameModule.cs: ' + module)
     mj = os.path.join(module, 'module.json')
@@ -13,7 +13,7 @@ def scaffold(proto, template, module):
     if not re.fullmatch(r'[a-z][a-z0-9]{1,30}', str(meta.get('id', ''))) or not str(meta.get('name', '')).strip():
         raise SystemExit('module.json needs id (lowercase letters/digits, e.g. candyjam) and a non-empty name')
     shutil.copytree(template, proto, dirs_exist_ok=True, ignore=shutil.ignore_patterns('bin', 'obj'))
-    for src, dst in (('Core', 'Assets/Scripts/Game/Core'), ('View', 'Assets/Scripts/Game/View'), ('Tests', 'Tests~/Core.Tests/Game')):
+    for src, dst in (('Core', 'Assets/Scripts/Game/Core'), ('View', 'Assets/Scripts/Game/View'), ('Tests', 'Tests~/Core.Tests/Game'), ('Resources', 'Assets/Resources')):
         d = os.path.join(proto, dst)
         shutil.rmtree(d, ignore_errors=True)
         if os.path.isdir(os.path.join(module, src)):
