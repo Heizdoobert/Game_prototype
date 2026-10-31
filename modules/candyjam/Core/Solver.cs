@@ -11,16 +11,26 @@ namespace CandyJam.Core
     {
         const int Depth = 2, Branch = 6, NodeBudget = 20000; // [tuned]
 
-        public static bool Solve(LevelData level, int seed = 1)
+        public static bool Solve(LevelData level, int seed = 1) { return Play(level, seed, true).Won; }
+
+        public readonly struct Stats
+        {
+            public readonly bool Won;
+            public readonly int PeakTray; // most candies waiting in the tray after any tap (a lost game peaks at the tray size)
+            public Stats(bool won, int peak) { Won = won; PeakTray = peak; }
+        }
+
+        // one full game by the bot; lookahead=false is the plain greedy pick, with no foresight of the jar spawns
+        public static Stats Play(LevelData level, int seed, bool lookahead)
         {
             var g = new Game(level, seed);
-            int budget = NodeBudget;
+            int budget = NodeBudget, peak = 0;
             while (g.State == GameState.Playing)
             {
                 var moves = Candidates(g);
                 if (moves.Count == 0) break;
                 var pick = moves[0];
-                if (moves.Count > 1 && budget > 0)
+                if (lookahead && moves.Count > 1 && budget > 0)
                 {
                     double best = double.MinValue;
                     foreach (var m in moves)
@@ -30,8 +40,9 @@ namespace CandyJam.Core
                     }
                 }
                 g.Tap(g.Board.Candies[pick.Id], out _);
+                if (g.TrayCount > peak) peak = g.TrayCount;
             }
-            return g.State == GameState.Won;
+            return new Stats(g.State == GameState.Won, peak);
         }
 
         static Game Child(Game g, Candy m, ref int budget)
