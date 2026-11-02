@@ -29,9 +29,11 @@ namespace CandyJam.Core
         public static readonly int[] UnlockLevel = { 2, 9, 5, 7, 4, 12 };
         public const int FreeOnUnlock = 3;
 
-        public static int WinCoins(Difficulty d)
+        public static T ByTier<T>(Difficulty d, T normal, T hard, T veryHard)
         {
-            return d == Difficulty.VeryHard ? 70 : d == Difficulty.Hard ? 60 : 50;
+            return d == Difficulty.VeryHard ? veryHard : d == Difficulty.Hard ? hard : normal;
         }
+
+        public static int WinCoins(Difficulty d) { return ByTier(d, 50, 60, 70); }
     }
 }

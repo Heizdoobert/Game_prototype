@@ -67,8 +67,7 @@ namespace CandyJam.Core
             if (g.State == GameState.Won) return 1e9;
             if (g.State == GameState.Lost) return -1e9;
             var free = g.Board.Free();
-            var freeBy = new int[Rules.Palette];
-            foreach (var c in free) freeBy[c.Color]++;
+            var freeBy = Board.CountByColor(free);
             int match = 0;
             foreach (var j in g.Jars) if (j != null) match += Math.Min(Rules.JarCapacity - j.Count, freeBy[j.Color]);
             double s = 1000.0 * g.JarsCompleted - 200.0 * g.TrayCount + 50.0 * match + free.Count;
@@ -81,8 +80,7 @@ namespace CandyJam.Core
         static List<Candy> Candidates(Game g)
         {
             var free = g.Board.Free();
-            var freeBy = new int[Rules.Palette];
-            foreach (var c in free) freeBy[c.Color]++;
+            var freeBy = Board.CountByColor(free);
             var trayBy = new int[Rules.Palette];
             for (int t = 0; t < g.TraySlots; t++) if (g.Tray[t] >= 0) trayBy[g.Tray[t]]++;
             bool trayFull = g.TrayCount >= g.TraySlots;

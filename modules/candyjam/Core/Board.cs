@@ -70,6 +70,14 @@ namespace CandyJam.Core
             return r;
         }
 
+        // live candies per colour; pass Free() for the ones that can be tapped now
+        public static int[] CountByColor(IEnumerable<Candy> candies)
+        {
+            var n = new int[Rules.Palette];
+            foreach (var c in candies) if (!c.Removed) n[c.Color]++;
+            return n;
+        }
+
         public void Remove(Candy c)
         {
             if (c.Removed) return;

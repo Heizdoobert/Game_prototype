@@ -71,9 +71,7 @@ namespace CandyJam.Core
         {
             if (State != GameState.Playing || target == null || target.Removed) return BoosterResult.Unusable;
             int col = target.Color;
-            if (Outside(col) < Rules.JarCapacity) return BoosterResult.Unusable;
-            for (int s = 0; s < Rules.JarSlots; s++)
-                if (Jars[s] != null && Jars[s].Color == col) return BoosterResult.Unusable;
+            if (!CanSpawn(col)) return BoosterResult.Unusable;
             for (int s = 0; s < Rules.JarSlots; s++)
             {
                 if (!JarUnlocked[s] || (Jars[s] != null && Jars[s].Count > 0)) continue;

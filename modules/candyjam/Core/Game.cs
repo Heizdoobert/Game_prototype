@@ -181,10 +181,8 @@ namespace CandyJam.Core
             var cand = new List<int>();
             for (int i = 0; i < Rules.Palette; i++) if (CanSpawn(i)) cand.Add(i);
             if (cand.Count == 0) return -1;
-            var rem = new int[Rules.Palette];
-            var free = new int[Rules.Palette];
-            foreach (var c in Board.Candies) if (!c.Removed) rem[c.Color]++;
-            foreach (var c in Board.Free()) free[c.Color]++;
+            var rem = Board.CountByColor(Board.Candies);
+            var free = Board.CountByColor(Board.Free());
             cand.Sort((a, b) =>
             {
                 int d = (rem[b] - free[b]) - (rem[a] - free[a]);

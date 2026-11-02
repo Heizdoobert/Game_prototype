@@ -17,8 +17,7 @@ namespace CandyJam.Core
         public static int TargetColors(int n)
         {
             int ramp = Math.Min(Rules.MaxColors, 3 + n / 6);
-            var d = DifficultyOf(n);
-            return d == Difficulty.VeryHard ? Math.Min(ramp, 4) : d == Difficulty.Hard ? Math.Min(ramp, 5) : ramp;
+            return Math.Min(ramp, Rules.ByTier(DifficultyOf(n), Rules.MaxColors, 5, 4));
         }
 
         // ponytail: bot-verified rejection sampling; colour count drops every 5 failed attempts (floor 3), counted in
@@ -68,8 +67,7 @@ namespace CandyJam.Core
 
         public static int LayersOf(int n)
         {
-            var d = DifficultyOf(n);
-            return Math.Min(2 + n / 12 + (d == Difficulty.VeryHard ? 2 : d == Difficulty.Hard ? 1 : 0), 6);
+            return Math.Min(2 + n / 12 + Rules.ByTier(DifficultyOf(n), 0, 1, 2), 6);
         }
 
         // hashed so the style does not line up with the tier cadence; Hard/VeryHard skip Concentric, the loosest
@@ -84,7 +82,7 @@ namespace CandyJam.Core
         {
             var rng = new Random(number * 7919 + 13 + attempt * 101);
             var diff = DifficultyOf(number);
-            double scale = diff == Difficulty.VeryHard ? 1.16 : diff == Difficulty.Hard ? 1.08 : 1.0;
+            double scale = Rules.ByTier(diff, 1.0, 1.08, 1.16);
             int count = Math.Min((int)(Math.Min(54 + (number - 1) * 2, 297) * scale), 297) / 3 * 3;
             int layers = LayersOf(number);
             var pts = Layout.Build(ShapeOf(number), StyleOf(number), layers, count, rng);
